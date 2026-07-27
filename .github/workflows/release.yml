@@ -10,7 +10,7 @@ permissions:
 
 jobs:
   release:
-    runs-on: macos-14
+    runs-on: macos-26
 
     steps:
       - name: Checkout
@@ -25,13 +25,18 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          notes_file="RELEASE_NOTES_${GITHUB_REF_NAME}.md"
           args=(
             "$GITHUB_REF_NAME"
             dist/VoiceSwitch-*.zip
             dist/VoiceSwitch-*.zip.sha256
-            --generate-notes
             --title "VoiceSwitch ${GITHUB_REF_NAME}"
           )
+          if [[ -f "$notes_file" ]]; then
+            args+=(--notes-file "$notes_file")
+          else
+            args+=(--generate-notes)
+          fi
           if [[ "$GITHUB_REF_NAME" == *"-"* ]]; then
             args+=(--prerelease)
           fi

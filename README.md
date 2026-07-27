@@ -4,7 +4,7 @@
   <img src="assets/banner.svg" alt="VoiceSwitch — локальная диктовка для macOS" width="100%">
 </p>
 
-> Локальная диктовка для macOS с быстрым переключением между GigaAM и Whisper.
+> Локальная диктовка для macOS с переключением между четырьмя движками распознавания.
 
 [![CI](https://github.com/mitimaicode/VoiceSwitch/actions/workflows/ci.yml/badge.svg)](https://github.com/mitimaicode/VoiceSwitch/actions/workflows/ci.yml)
 [![Latest release](https://img.shields.io/github/v/release/mitimaicode/VoiceSwitch?include_prereleases)](https://github.com/mitimaicode/VoiceSwitch/releases)
@@ -16,6 +16,8 @@ VoiceSwitch записывает речь по глобальной горяче
 
 - **GigaAM v3 E2E RNNT** — основной режим для русской речи;
 - **Whisper Large V3 Turbo (MLX)** — для смешанной русско-английской речи;
+- **Qwen3-ASR 1.7B (MLX)** — точный многоязычный режим;
+- **Apple SpeechAnalyzer** — системная локальная диктовка на macOS 26+;
 - `fn + ⌥ Option` — начать или остановить запись;
 - HUD показывает запись, длительную расшифровку и результат;
 - аудио и текст не отправляются во внешние API;
@@ -30,7 +32,7 @@ VoiceSwitch записывает речь по глобальной горяче
 - Mac с Apple Silicon (`M1` или новее);
 - macOS 14 Sonoma или новее;
 - рекомендуется 16 ГБ оперативной памяти;
-- около 4–5 ГБ свободного места для Python, зависимостей и двух моделей;
+- около 9 ГБ свободного места для Python, зависимостей и трёх загружаемых моделей;
 - интернет только во время первоначальной установки моделей.
 
 ## Установка
@@ -51,7 +53,7 @@ VoiceSwitch записывает речь по глобальной горяче
 
 ## Использование
 
-1. Выберите GigaAM или Whisper в меню VoiceSwitch.
+1. Выберите GigaAM, Whisper, Qwen или Apple в меню VoiceSwitch.
 2. Нажмите `fn + ⌥ Option`, чтобы начать запись.
 3. Отпустите клавиши и нажмите сочетание ещё раз, чтобы остановить запись.
 4. Дождитесь завершения расшифровки. Текст будет вставлен в ранее активное
@@ -61,8 +63,9 @@ VoiceSwitch записывает речь по глобальной горяче
 Во время распознавания он сменяется индикатором модели и времени ожидания.
 HUD не перехватывает клики.
 
-Модель загружается лениво. При переключении предыдущая модель выгружается,
-чтобы не занимать память.
+Модель загружается лениво. При переключении предыдущая загружаемая модель
+выгружается, чтобы не занимать память. Apple использует системные ресурсы
+распознавания и может отдельно запросить разрешение «Распознавание речи».
 
 ## Где хранятся данные
 
@@ -82,9 +85,34 @@ Runtime и веса моделей:
 определённый язык, результат и ваша оценка. Временные аудиофайлы удаляются
 после обработки.
 
+## Результаты сравнительного теста
+
+27 июля 2026 года четыре движка были проверены на восьми одинаковых
+аудиофрагментах общей продолжительностью 209,5 секунды. В набор вошли
+многоголосые рассказы, быстрый диалог, одиночный диктор, русский рок,
+женский вокал, смешанный русско-английский трек и быстрый речитатив.
+
+| Модель | Средняя задержка | Наблюдение | Рекомендуемая роль |
+|---|---:|---|---|
+| GigaAM v3 E2E RNNT | 0,77 с | Самый ровный и полный русский результат | Основная модель для русского |
+| Whisper Large V3 Turbo | 2,52 с | Быстрый, но хуже переносит музыку и сложный вокал | Запасной режим для смешанной речи |
+| Qwen3-ASR 1.7B | 19,00 с | Иногда точнее в отдельных фразах, но может переключаться на английский | Экспериментальный режим |
+| Apple SpeechAnalyzer | 0,42 с | Минимальная задержка, но сильное обрезание сложного звука | Сравнение на чистой речи |
+
+Высокая скорость Apple в этом тесте не означает высокую точность: движок
+вернул только 25 слов на четырёх речевых файлах и пустой результат на всех
+музыкальных примерах. Максимальная задержка Qwen достигла 36,24 секунды.
+
+Итоговая практическая рекомендация — **GigaAM для русской диктовки и Whisper
+для настоящей смешанной русско-английской речи**. Это сравнительный тест без
+эталонной ручной разметки, поэтому цифры нельзя считать универсальным WER.
+
+Подробная методика, результаты по сценариям и ограничения описаны в
+[полном отчёте](benchmarks/2026-07-27/REPORT.md).
+
 ## Как выбрать модель
 
-Проверьте обе модели на одинаковом наборе из 10–20 фраз:
+Проверьте модели на одинаковом наборе из 10–20 фраз:
 
 - обычная русская диктовка;
 - имена, названия продуктов и профессиональные термины;
@@ -92,9 +120,8 @@ Runtime и веса моделей:
 - переключения русского и английского внутри одной фразы;
 - короткие и длинные голосовые сообщения.
 
-На MacBook Air M3 официальный 11-секундный русский WAV-пример обрабатывался
-после загрузки модели примерно за 0,4–0,6 секунды в GigaAM и 3,8–4,1 секунды
-в Whisper. Это проверка работоспособности, а не универсальный тест качества.
+Публичный тест выше помогает выбрать отправную точку, но окончательную модель
+лучше определять на своей речи, микрофоне, именах и рабочих терминах.
 
 ## Сборка из исходников
 
@@ -105,7 +132,7 @@ chmod +x scripts/*.sh Resources/install_runtime.sh
 ./scripts/build_app.sh
 ```
 
-Установка обеих моделей для разработки:
+Установка трёх загружаемых моделей для разработки:
 
 ```zsh
 ./scripts/setup_models.sh
@@ -114,7 +141,7 @@ chmod +x scripts/*.sh Resources/install_runtime.sh
 Создание компактного release-архива без весов моделей:
 
 ```zsh
-./scripts/package_release.sh 0.1.0-beta
+./scripts/package_release.sh 0.2.0-beta
 ```
 
 ## Обратная связь
@@ -138,6 +165,9 @@ chmod +x scripts/*.sh Resources/install_runtime.sh
 - [GigaAM](https://github.com/salute-developers/GigaAM) — MIT;
 - [OpenAI Whisper](https://github.com/openai/whisper) — MIT;
 - [MLX Whisper](https://github.com/ml-explore/mlx-examples/tree/main/whisper);
+- [Qwen3-ASR](https://github.com/QwenLM/Qwen3-ASR) — Apache-2.0;
+- [mlx-qwen3-asr](https://github.com/moona3k/mlx-qwen3-asr) — Apache-2.0;
+- Apple Speech framework — системный компонент macOS;
 - [uv](https://github.com/astral-sh/uv) — Apache-2.0 / MIT.
 
 VoiceSwitch не связан с авторами перечисленных проектов.
@@ -148,9 +178,10 @@ VoiceSwitch не связан с авторами перечисленных п�
 <summary>English summary</summary>
 
 VoiceSwitch is a local macOS dictation menu-bar app for Apple Silicon. It
-switches between GigaAM for Russian speech and Whisper Large V3 Turbo (MLX)
-for mixed Russian/English speech. Press `fn + Option` to start or stop
-recording. Audio and transcripts stay on the Mac. See [INSTALL.md](INSTALL.md)
-for installation details and use GitHub Issues or Discussions for feedback.
+switches between GigaAM, Whisper Large V3 Turbo, Qwen3-ASR 1.7B, and Apple
+SpeechAnalyzer. Press `fn + Option` to start or stop recording. Audio and
+transcripts stay on the Mac. Apple SpeechAnalyzer requires macOS 26 or newer.
+See [INSTALL.md](INSTALL.md) for installation details and use GitHub Issues or
+Discussions for feedback.
 
 </details>

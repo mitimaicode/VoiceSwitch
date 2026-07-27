@@ -22,6 +22,7 @@ from typing import Any
 PROTOCOL_PREFIX = "__VOICESWITCH_JSON__"
 WHISPER_MODEL = "mlx-community/whisper-large-v3-turbo"
 GIGAAM_MODEL = "v3_e2e_rnnt"
+QWEN_MODEL = "Qwen/Qwen3-ASR-1.7B"
 
 
 def emit(message_type: str, **payload: Any) -> None:
@@ -132,12 +133,19 @@ class Recognizer:
                 fp16_encoder=False,
                 download_root=str(self.cache_root / "gigaam"),
             )
+        elif self.engine == "qwen":
+            emit("loading", engine=self.engine, message="Загрузка Qwen3-ASR 1.7B…")
+            from mlx_qwen3_asr import Session
+
+            self.model = Session(model=QWEN_MODEL)
         else:
             raise ValueError(f"Неизвестный движок: {self.engine}")
 
     def transcribe(self, audio: Path, prompt: str) -> tuple[str, str | None]:
         if self.engine == "whisper":
             return self._transcribe_whisper(audio, prompt)
+        if self.engine == "qwen":
+            return self._transcribe_qwen(audio, prompt)
         return self._transcribe_gigaam(audio), "ru"
 
     def _transcribe_whisper(
@@ -175,6 +183,17 @@ class Recognizer:
         finally:
             if temporary is not None:
                 temporary.cleanup()
+
+    def _transcribe_qwen(
+        self,
+        audio: Path,
+        context: str,
+    ) -> tuple[str, str | None]:
+        result = self.model.transcribe(
+            str(audio),
+            context=context.strip() or None,
+        )
+        return result.text.strip(), result.language
 
 
 def serve(engine: str, cache_root: Path) -> int:
@@ -242,7 +261,11 @@ def parse_arguments() -> argparse.Namespace:
     mode = parser.add_mutually_exclusive_group(required=True)
     mode.add_argument("--serve", action="store_true")
     mode.add_argument("--download", action="store_true")
-    parser.add_argument("--engine", choices=("gigaam", "whisper"), required=True)
+    parser.add_argument(
+        "--engine",
+        choices=("gigaam", "whisper", "qwen"),
+        required=True,
+    )
     parser.add_argument("--cache", type=Path, required=True)
     return parser.parse_args()
 

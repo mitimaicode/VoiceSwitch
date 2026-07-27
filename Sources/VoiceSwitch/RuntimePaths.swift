@@ -1,6 +1,8 @@
 import Foundation
 
 enum RuntimePaths {
+    static let expectedRuntimeVersion = 2
+
     static var distributionRoot: URL {
         Bundle.main.bundleURL.deletingLastPathComponent()
     }
@@ -71,7 +73,14 @@ enum RuntimePaths {
     }
 
     static var isRuntimeReady: Bool {
-        FileManager.default.isExecutableFile(atPath: pythonExecutable.path)
+        guard FileManager.default.isExecutableFile(atPath: pythonExecutable.path),
+              let marker = try? String(
+                contentsOf: runtimeRoot.appendingPathComponent("install-complete.txt"),
+                encoding: .utf8
+              ) else {
+            return false
+        }
+        return marker.contains("runtime_version=\(expectedRuntimeVersion)")
     }
 
     static var modelCache: URL {

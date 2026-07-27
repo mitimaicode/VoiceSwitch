@@ -7,12 +7,9 @@ WORKSPACE_ROOT=${PROJECT_ROOT:h:h}
 OUTPUT_ROOT="${1:-${WORKSPACE_ROOT}/outputs/VoiceSwitch}"
 APP_ROOT="${OUTPUT_ROOT}/VoiceSwitch.app"
 CONTENTS="${APP_ROOT}/Contents"
-LOCAL_COMPATIBILITY_SDK="/Library/Developer/CommandLineTools/SDKs/MacOSX15.4.sdk"
 
 if [[ -n "${SDKROOT:-}" ]]; then
   SDK_PATH="${SDKROOT}"
-elif [[ -d "${LOCAL_COMPATIBILITY_SDK}" ]]; then
-  SDK_PATH="${LOCAL_COMPATIBILITY_SDK}"
 else
   SDK_PATH="$(xcrun --sdk macosx --show-sdk-path)"
 fi
@@ -22,13 +19,46 @@ mkdir -p \
   "${PROJECT_ROOT}/.build/module-cache" \
   "${PROJECT_ROOT}/.build/swiftpm-cache"
 
+SWIFT_BUILD_FLAGS=()
+SDK_INTERFACE=$(
+  find \
+    "${SDK_PATH}/usr/lib/swift/Swift.swiftmodule" \
+    -name '*-apple-macos.swiftinterface' \
+    -print \
+    -quit
+)
+if [[ -n "${SDK_INTERFACE}" ]]; then
+  SDK_SWIFT_VERSION=$(
+    sed -n \
+      's#^// swift-compiler-version: Apple Swift version \([0-9.]*\).*#\1#p' \
+      "${SDK_INTERFACE}" |
+      head -n 1
+  )
+  COMPILER_SWIFT_VERSION=$(
+    swiftc --version |
+      sed -n 's#.*Apple Swift version \([0-9.]*\).*#\1#p' |
+      head -n 1
+  )
+  if [[ -n "${SDK_SWIFT_VERSION}" &&
+        -n "${COMPILER_SWIFT_VERSION}" &&
+        "${SDK_SWIFT_VERSION}" != "${COMPILER_SWIFT_VERSION}" ]]; then
+    SWIFT_BUILD_FLAGS+=(
+      -Xswiftc -Xfrontend
+      -Xswiftc -interface-compiler-version
+      -Xswiftc -Xfrontend
+      -Xswiftc "${SDK_SWIFT_VERSION}"
+    )
+  fi
+fi
+
 SDKROOT="${SDK_PATH}" \
 CLANG_MODULE_CACHE_PATH="${PROJECT_ROOT}/.build/module-cache" \
 SWIFTPM_MODULECACHE_OVERRIDE="${PROJECT_ROOT}/.build/module-cache" \
 swift build \
   -c release \
   --disable-sandbox \
-  --cache-path "${PROJECT_ROOT}/.build/swiftpm-cache"
+  --cache-path "${PROJECT_ROOT}/.build/swiftpm-cache" \
+  "${SWIFT_BUILD_FLAGS[@]}"
 
 if [[ -d "${APP_ROOT}" ]]; then
   /bin/rm -rf "${APP_ROOT}"

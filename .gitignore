@@ -9,6 +9,9 @@ outputs/
 *.wav
 *.jsonl
 !metrics/github-stats.jsonl
+benchmarks/**/audio/
+benchmarks/**/results/apple.json
+benchmarks/**/results/python_models.json
 __pycache__/
 *.py[cod]
 .env

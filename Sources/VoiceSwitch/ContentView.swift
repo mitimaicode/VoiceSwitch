@@ -31,7 +31,7 @@ struct ContentView: View {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Установка локальных моделей")
                         .font(.subheadline.weight(.semibold))
-                    Text("Python, GigaAM и Whisper · около 4 ГБ")
+                    Text("Python, GigaAM, Whisper и Qwen 1.7B · около 8 ГБ")
                         .font(.caption2)
                         .foregroundStyle(.secondary)
                 }
@@ -50,7 +50,7 @@ struct ContentView: View {
                 }
                 .controlSize(.small)
             } else {
-                Text("Данные речи остаются на Mac. Компоненты загружаются из официальных репозиториев Astral, Hugging Face, PyPI и GigaAM.")
+                Text("Данные речи остаются на Mac. Компоненты загружаются из Astral, Hugging Face, PyPI, GigaAM и Qwen.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                 HStack {
@@ -91,7 +91,7 @@ struct ContentView: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text("VoiceSwitch")
                     .font(.headline)
-                Text("Локальная диктовка · две модели")
+                Text("Локальная диктовка · четыре модели")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -111,6 +111,7 @@ struct ContentView: View {
                 }
             }
             .pickerStyle(.segmented)
+            .disabled(state.isRecording || state.isTranscribing || state.isInstallingRuntime)
 
             Text(state.selectedEngine.detail)
                 .font(.caption)
@@ -134,7 +135,7 @@ struct ContentView: View {
             }
             .buttonStyle(.borderedProminent)
             .tint(state.isRecording ? .red : .indigo)
-            .disabled(state.isTranscribing || !state.runtimeReady || state.isInstallingRuntime)
+            .disabled(state.isTranscribing || !state.selectedEngineReady || state.isInstallingRuntime)
 
             HStack(spacing: 7) {
                 if state.isTranscribing {
@@ -208,10 +209,10 @@ struct ContentView: View {
             Toggle("Автоматически вставлять текст в активное приложение", isOn: $state.autoPaste)
                 .font(.caption)
 
-            if state.selectedEngine == .whisper {
+            if state.selectedEngine.supportsContext {
                 TextField(
-                    "Контекст для Whisper: имена, термины, продукты…",
-                    text: $state.whisperPrompt
+                    state.selectedEngine.contextPlaceholder,
+                    text: $state.recognitionContext
                 )
                 .textFieldStyle(.roundedBorder)
                 .font(.caption)
@@ -231,7 +232,7 @@ struct ContentView: View {
                 Button("Подготовить модель") {
                     state.prewarmSelectedEngine()
                 }
-                .disabled(!state.runtimeReady || state.isInstallingRuntime)
+                .disabled(!state.selectedEngineReady || state.isInstallingRuntime)
                 Button("Разрешить доступ") {
                     state.requestAccessibility()
                 }

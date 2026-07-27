@@ -1,0 +1,44 @@
+{
+  "date": "2026-07-27",
+  "sample_count": 8,
+  "total_audio_seconds": 209.5483125,
+  "story_audio_seconds": 88.929625,
+  "music_audio_seconds": 120.6186875,
+  "models": {
+    "gigaam": {
+      "average_latency_seconds": 0.7719345625,
+      "average_rtf": 0.0295240667,
+      "story_average_latency_seconds": 0.6561716355,
+      "story_output_words": 73,
+      "music_average_latency_seconds": 0.8876974895,
+      "music_output_words": 169
+    },
+    "whisper": {
+      "average_latency_seconds": 2.51685401,
+      "average_rtf": 0.0960700262,
+      "story_average_latency_seconds": 2.1746434058,
+      "story_output_words": 60,
+      "music_average_latency_seconds": 2.8590646143,
+      "music_output_words": 63
+    },
+    "qwen": {
+      "average_latency_seconds": 18.996343573,
+      "average_rtf": 0.7150618539,
+      "story_average_latency_seconds": 14.6403001145,
+      "story_output_words": 79,
+      "music_average_latency_seconds": 23.3523870315,
+      "music_output_words": 195,
+      "maximum_latency_seconds": 36.237527417
+    },
+    "apple": {
+      "average_latency_seconds": 0.4242302775,
+      "average_rtf": 0.0165106446,
+      "story_average_latency_seconds": 0.4117502868,
+      "story_output_words": 25,
+      "music_average_latency_seconds": 0.4367102683,
+      "music_output_words": 0
+    }
+  },
+  "recommended_default": "gigaam",
+  "recommended_mixed_language_fallback": "whisper"
+}

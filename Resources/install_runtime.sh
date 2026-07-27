@@ -88,6 +88,7 @@ status "Устанавливаю локальные движки распозн�
   "huggingface_hub[hf_xet]" \
   imageio-ffmpeg \
   mlx-whisper \
+  "mlx-qwen3-asr==0.3.5" \
   "${GIGAAM_ARCHIVE}"
 
 FFMPEG_EXECUTABLE=$(
@@ -107,8 +108,15 @@ status "Загружаю GigaAM v3 E2E RNNT…"
   --engine gigaam \
   --cache "${MODEL_ROOT}"
 
-print -r -- "runtime_version=1" > "${RUNTIME_ROOT}/install-complete.txt"
+status "Загружаю Qwen3-ASR 1.7B…"
+"${PYTHON}" "${WORKER_SCRIPT}" \
+  --download \
+  --engine qwen \
+  --cache "${MODEL_ROOT}"
+
+print -r -- "runtime_version=2" > "${RUNTIME_ROOT}/install-complete.txt"
 print -r -- "uv_version=${UV_VERSION}" >> "${RUNTIME_ROOT}/install-complete.txt"
 print -r -- "gigaam_commit=${GIGAAM_COMMIT}" >> "${RUNTIME_ROOT}/install-complete.txt"
+print -r -- "qwen_model=Qwen/Qwen3-ASR-1.7B" >> "${RUNTIME_ROOT}/install-complete.txt"
 
-status "Готово — обе модели установлены."
+status "Готово — три локальные модели установлены."

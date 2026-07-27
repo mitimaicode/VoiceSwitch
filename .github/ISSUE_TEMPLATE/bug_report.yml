@@ -11,7 +11,7 @@ body:
     id: version
     attributes:
       label: Версия VoiceSwitch
-      placeholder: v0.1.0-beta
+      placeholder: v0.2.0-beta
     validations:
       required: true
   - type: input
@@ -28,7 +28,9 @@ body:
       options:
         - GigaAM
         - Whisper
-        - Обе
+        - Qwen3-ASR
+        - Apple
+        - Несколько моделей
         - Не относится к распознаванию
     validations:
       required: true

@@ -10,6 +10,7 @@ final class ASRService {
     private var outputBuffer = Data()
     private var currentEngine: ASREngine?
     private var pending: [String: Completion] = [:]
+    private let appleSpeechService = AppleSpeechService()
 
     var onWorkerEvent: ((String) -> Void)?
 
@@ -21,6 +22,31 @@ final class ASRService {
         completion: @escaping Completion
     ) {
         let requestID = UUID().uuidString
+
+        if engine == .apple {
+            let started = Date()
+            appleSpeechService.transcribe(
+                audioURL: audioURL,
+                context: prompt
+            ) { result in
+                switch result {
+                case .success(let appleResult):
+                    completion(.success(
+                        TranscriptionResult(
+                            requestID: requestID,
+                            engine: .apple,
+                            text: appleResult.text,
+                            latency: Date().timeIntervalSince(started),
+                            audioDuration: duration,
+                            detectedLanguage: appleResult.language
+                        )
+                    ))
+                case .failure(let error):
+                    completion(.failure(error))
+                }
+            }
+            return
+        }
 
         queue.async { [weak self] in
             guard let self else { return }
@@ -46,6 +72,19 @@ final class ASRService {
     }
 
     func prewarm(engine: ASREngine) {
+        if engine == .apple {
+            onWorkerEvent?("Подготавливаю русскую модель Apple…")
+            appleSpeechService.prepare { [weak self] result in
+                switch result {
+                case .success:
+                    self?.onWorkerEvent?("Apple SpeechAnalyzer готов.")
+                case .failure(let error):
+                    self?.onWorkerEvent?(error.localizedDescription)
+                }
+            }
+            return
+        }
+
         queue.async { [weak self] in
             do {
                 try self?.ensureWorker(for: engine)
@@ -56,6 +95,9 @@ final class ASRService {
     }
 
     func switchEngine(to engine: ASREngine) {
+        if engine != .apple {
+            appleSpeechService.shutdown()
+        }
         queue.async { [weak self] in
             guard let self, self.currentEngine != engine else { return }
             self.stopWorker(reason: "Модель переключена.")
@@ -63,12 +105,18 @@ final class ASRService {
     }
 
     func shutdown() {
+        appleSpeechService.shutdown()
         queue.sync {
             stopWorker(reason: "Приложение завершено.")
         }
     }
 
     private func ensureWorker(for engine: ASREngine) throws {
+        guard engine != .apple else {
+            throw VoiceSwitchError.workerFailed(
+                "Apple SpeechAnalyzer не использует Python worker."
+            )
+        }
         if let process, process.isRunning, currentEngine == engine {
             return
         }

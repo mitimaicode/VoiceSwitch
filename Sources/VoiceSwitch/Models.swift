@@ -3,6 +3,8 @@ import Foundation
 enum ASREngine: String, CaseIterable, Identifiable, Codable {
     case gigaam
     case whisper
+    case qwen
+    case apple
 
     var id: String { rawValue }
 
@@ -12,6 +14,10 @@ enum ASREngine: String, CaseIterable, Identifiable, Codable {
             return "GigaAM v3 E2E RNNT"
         case .whisper:
             return "Whisper Large V3 Turbo"
+        case .qwen:
+            return "Qwen3-ASR 1.7B"
+        case .apple:
+            return "Apple SpeechAnalyzer"
         }
     }
 
@@ -21,6 +27,10 @@ enum ASREngine: String, CaseIterable, Identifiable, Codable {
             return "GigaAM"
         case .whisper:
             return "Whisper"
+        case .qwen:
+            return "Qwen"
+        case .apple:
+            return "Apple"
         }
     }
 
@@ -30,6 +40,36 @@ enum ASREngine: String, CaseIterable, Identifiable, Codable {
             return "Приоритет: русская речь и пунктуация"
         case .whisper:
             return "Приоритет: смешанная русско-английская речь"
+        case .qwen:
+            return "Приоритет: точная многоязычная речь · локально через MLX"
+        case .apple:
+            return "Системная диктовка Apple · русский · только macOS 26+"
+        }
+    }
+
+    var requiresRuntime: Bool {
+        self != .apple
+    }
+
+    var supportsContext: Bool {
+        switch self {
+        case .whisper, .qwen, .apple:
+            return true
+        case .gigaam:
+            return false
+        }
+    }
+
+    var contextPlaceholder: String {
+        switch self {
+        case .whisper:
+            return "Контекст для Whisper: имена, термины, продукты…"
+        case .qwen:
+            return "Контекст для Qwen: имена, термины, продукты…"
+        case .apple:
+            return "Слова-подсказки для Apple: имена, термины…"
+        case .gigaam:
+            return ""
         }
     }
 }

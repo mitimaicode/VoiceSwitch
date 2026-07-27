@@ -8,7 +8,11 @@ final class AppState: ObservableObject {
         didSet {
             UserDefaults.standard.set(selectedEngine.rawValue, forKey: "selectedEngine")
             asrService.switchEngine(to: selectedEngine)
-            status = "Выбрана \(selectedEngine.shortTitle). Модель загрузится при первой записи."
+            if selectedEngine.requiresRuntime, !runtimeReady {
+                status = "Для \(selectedEngine.shortTitle) обновите локальные модели."
+            } else {
+                status = "Выбрана \(selectedEngine.shortTitle). Модель подготовится при первой записи."
+            }
         }
     }
     @Published var autoPaste: Bool {
@@ -16,9 +20,9 @@ final class AppState: ObservableObject {
             UserDefaults.standard.set(autoPaste, forKey: "autoPaste")
         }
     }
-    @Published var whisperPrompt: String {
+    @Published var recognitionContext: String {
         didSet {
-            UserDefaults.standard.set(whisperPrompt, forKey: "whisperPrompt")
+            UserDefaults.standard.set(recognitionContext, forKey: "recognitionContext")
         }
     }
     @Published private(set) var isRecording = false
@@ -54,7 +58,10 @@ final class AppState: ObservableObject {
         } else {
             autoPaste = UserDefaults.standard.bool(forKey: "autoPaste")
         }
-        whisperPrompt = UserDefaults.standard.string(forKey: "whisperPrompt") ?? ""
+        recognitionContext =
+            UserDefaults.standard.string(forKey: "recognitionContext")
+            ?? UserDefaults.standard.string(forKey: "whisperPrompt")
+            ?? ""
 
         let hudModel = HUDModel()
         self.hudModel = hudModel
@@ -69,9 +76,9 @@ final class AppState: ObservableObject {
             self.status = message
         }
 
-        if !runtimeReady {
+        if !runtimeReady, selectedEngine.requiresRuntime {
             status = "Установите локальные модели перед первой записью."
-            runtimeInstallStatus = "Потребуется около 4 ГБ свободного места."
+            runtimeInstallStatus = "Потребуется около 8 ГБ свободного места."
         }
     }
 
@@ -100,6 +107,10 @@ final class AppState: ObservableObject {
         RuntimePaths.runtimeRoot.path
     }
 
+    var selectedEngineReady: Bool {
+        !selectedEngine.requiresRuntime || runtimeReady
+    }
+
     func toggleRecording() {
         toggleRecording(source: "button")
     }
@@ -114,8 +125,8 @@ final class AppState: ObservableObject {
 
     func startRecording(source: String) {
         guard !isRecording, !isTranscribing else { return }
-        guard runtimeReady else {
-            status = "Сначала установите локальные модели."
+        guard selectedEngineReady else {
+            status = "Сначала обновите локальные модели."
             hudController.showFailure("Требуется установка моделей")
             return
         }
@@ -169,7 +180,7 @@ final class AppState: ObservableObject {
 
         let engine = selectedEngine
         let source = recordingSource
-        let prompt = engine == .whisper ? whisperPrompt : ""
+        let prompt = engine.supportsContext ? recognitionContext : ""
         let pasteTarget = targetPID
 
         asrService.transcribe(
@@ -230,8 +241,8 @@ final class AppState: ObservableObject {
 
     func prewarmSelectedEngine() {
         guard !isRecording, !isTranscribing else { return }
-        guard runtimeReady else {
-            status = "Сначала установите локальные модели."
+        guard selectedEngineReady else {
+            status = "Сначала обновите локальные модели."
             return
         }
         status = "Загружаю \(selectedEngine.shortTitle)…"
@@ -257,7 +268,7 @@ final class AppState: ObservableObject {
                 switch result {
                 case .success:
                     self.runtimeReady = RuntimePaths.isRuntimeReady
-                    self.runtimeInstallStatus = "Обе модели готовы к работе."
+                    self.runtimeInstallStatus = "Три локальные модели готовы к работе."
                     self.status = "Готово к записи"
                     self.hudController.showSuccess("Модели установлены")
                 case .failure(let error):
