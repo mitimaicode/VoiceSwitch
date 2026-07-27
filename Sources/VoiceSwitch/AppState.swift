@@ -8,7 +8,8 @@ final class AppState: ObservableObject {
         didSet {
             UserDefaults.standard.set(selectedEngine.rawValue, forKey: "selectedEngine")
             asrService.switchEngine(to: selectedEngine)
-            if selectedEngine.requiresRuntime, !runtimeReady {
+            if (selectedEngine.requiresRuntime || textProcessingMode.usesLocalModel),
+               !runtimeReady {
                 status = "Для \(selectedEngine.shortTitle) обновите локальные модели."
             } else {
                 status = "Выбрана \(selectedEngine.shortTitle). Модель подготовится при первой записи."
@@ -20,6 +21,24 @@ final class AppState: ObservableObject {
             UserDefaults.standard.set(autoPaste, forKey: "autoPaste")
         }
     }
+    @Published var textProcessingMode: TextProcessingMode {
+        didSet {
+            UserDefaults.standard.set(
+                textProcessingMode.rawValue,
+                forKey: "textProcessingMode"
+            )
+            if !textProcessingMode.usesLocalModel {
+                textProcessingService.shutdown()
+            }
+            if textProcessingMode.usesLocalModel, !runtimeReady {
+                status = "Для режима «\(textProcessingMode.title)» обновите локальные модели."
+            } else {
+                status = textProcessingMode.usesLocalModel
+                    ? "Выбран режим «\(textProcessingMode.title)». Редактор подготовится после распознавания."
+                    : "Выбран дословный режим без обработки текста."
+            }
+        }
+    }
     @Published var recognitionContext: String {
         didSet {
             UserDefaults.standard.set(recognitionContext, forKey: "recognitionContext")
@@ -27,9 +46,11 @@ final class AppState: ObservableObject {
     }
     @Published private(set) var isRecording = false
     @Published private(set) var isTranscribing = false
+    @Published private(set) var isProcessingText = false
     @Published private(set) var status = "Готово к записи"
     @Published private(set) var lastText = ""
     @Published private(set) var lastMetrics = ""
+    @Published private(set) var lastOutputMode: TextProcessingMode = .verbatim
     @Published private(set) var lastRating: String?
     @Published private(set) var permissionsVersion = 0
     @Published private(set) var runtimeReady = RuntimePaths.isRuntimeReady
@@ -41,6 +62,7 @@ final class AppState: ObservableObject {
     private let audioRecorder = AudioRecorder()
     private let hotKey = GlobalHotKey()
     private let asrService = ASRService()
+    private let textProcessingService = TextProcessingService()
     private let runtimeInstaller = RuntimeInstaller()
     private let appTracker = FrontmostApplicationTracker()
     private lazy var hudController = HUDController(model: hudModel)
@@ -52,6 +74,9 @@ final class AppState: ObservableObject {
         let savedEngine = UserDefaults.standard.string(forKey: "selectedEngine")
             .flatMap(ASREngine.init(rawValue:))
         selectedEngine = savedEngine ?? .gigaam
+        let savedTextMode = UserDefaults.standard.string(forKey: "textProcessingMode")
+            .flatMap(TextProcessingMode.init(rawValue:))
+        textProcessingMode = savedTextMode ?? .verbatim
 
         if UserDefaults.standard.object(forKey: "autoPaste") == nil {
             autoPaste = true
@@ -72,13 +97,23 @@ final class AppState: ObservableObject {
         hotKey.start()
 
         asrService.onWorkerEvent = { [weak self] message in
-            guard let self, !self.isRecording else { return }
+            guard let self,
+                  !self.isRecording,
+                  !self.isTranscribing,
+                  !self.isProcessingText else {
+                return
+            }
+            self.status = message
+        }
+        textProcessingService.onWorkerEvent = { [weak self] message in
+            guard let self, !self.isRecording, !self.isTranscribing else { return }
             self.status = message
         }
 
-        if !runtimeReady, selectedEngine.requiresRuntime {
+        if !runtimeReady,
+           selectedEngine.requiresRuntime || textProcessingMode.usesLocalModel {
             status = "Установите локальные модели перед первой записью."
-            runtimeInstallStatus = "Потребуется около 8 ГБ свободного места."
+            runtimeInstallStatus = "Потребуется около 12 ГБ свободного места."
         }
     }
 
@@ -108,7 +143,12 @@ final class AppState: ObservableObject {
     }
 
     var selectedEngineReady: Bool {
-        !selectedEngine.requiresRuntime || runtimeReady
+        (!selectedEngine.requiresRuntime || runtimeReady)
+            && (!textProcessingMode.usesLocalModel || runtimeReady)
+    }
+
+    var isBusy: Bool {
+        isTranscribing || isProcessingText
     }
 
     func toggleRecording() {
@@ -124,7 +164,7 @@ final class AppState: ObservableObject {
     }
 
     func startRecording(source: String) {
-        guard !isRecording, !isTranscribing else { return }
+        guard !isRecording, !isBusy else { return }
         guard selectedEngineReady else {
             status = "Сначала обновите локальные модели."
             hudController.showFailure("Требуется установка моделей")
@@ -182,6 +222,7 @@ final class AppState: ObservableObject {
         let source = recordingSource
         let prompt = engine.supportsContext ? recognitionContext : ""
         let pasteTarget = targetPID
+        let outputMode = textProcessingMode
 
         asrService.transcribe(
             audioURL: recording.url,
@@ -197,16 +238,7 @@ final class AppState: ObservableObject {
             case .success(let transcription):
                 self.lastResult = transcription
                 self.lastRating = nil
-                self.lastText = transcription.text
-                let factor = transcription.audioDuration > 0
-                    ? transcription.latency / transcription.audioDuration
-                    : 0
-                self.lastMetrics = String(
-                    format: "%.1f с аудио → %.1f с обработки · RTF %.2f",
-                    transcription.audioDuration,
-                    transcription.latency,
-                    factor
-                )
+                self.lastMetrics = self.asrMetrics(for: transcription)
                 ComparisonLogger.append(
                     result: transcription,
                     source: source,
@@ -219,19 +251,11 @@ final class AppState: ObservableObject {
                     return
                 }
 
-                if self.autoPaste {
-                    let pasted = TextInjector.paste(transcription.text, into: pasteTarget)
-                    self.status = pasted
-                        ? "Готово — текст вставлен."
-                        : "Готово — текст скопирован. Разрешите универсальный доступ для автовставки."
-                    self.hudController.showSuccess(
-                        pasted ? "Текст вставлен" : "Текст скопирован"
-                    )
-                } else {
-                    TextInjector.copy(transcription.text)
-                    self.status = "Готово — текст скопирован."
-                    self.hudController.showSuccess("Текст скопирован")
-                }
+                self.process(
+                    transcription: transcription,
+                    mode: outputMode,
+                    pasteTarget: pasteTarget
+                )
             case .failure(let error):
                 self.status = error.localizedDescription
                 self.hudController.showFailure("Ошибка распознавания")
@@ -240,13 +264,16 @@ final class AppState: ObservableObject {
     }
 
     func prewarmSelectedEngine() {
-        guard !isRecording, !isTranscribing else { return }
+        guard !isRecording, !isBusy else { return }
         guard selectedEngineReady else {
             status = "Сначала обновите локальные модели."
             return
         }
         status = "Загружаю \(selectedEngine.shortTitle)…"
         asrService.prewarm(engine: selectedEngine)
+        if textProcessingMode.usesLocalModel {
+            textProcessingService.prewarm()
+        }
     }
 
     func installRuntime() {
@@ -268,7 +295,7 @@ final class AppState: ObservableObject {
                 switch result {
                 case .success:
                     self.runtimeReady = RuntimePaths.isRuntimeReady
-                    self.runtimeInstallStatus = "Три локальные модели готовы к работе."
+                    self.runtimeInstallStatus = "Распознавание и локальный редактор готовы к работе."
                     self.status = "Готово к записи"
                     self.hudController.showSuccess("Модели установлены")
                 case .failure(let error):
@@ -301,6 +328,7 @@ final class AppState: ObservableObject {
         ComparisonLogger.appendEvaluation(
             requestID: lastResult.requestID,
             engine: lastResult.engine,
+            textMode: lastOutputMode,
             rating: rating
         )
     }
@@ -329,7 +357,105 @@ final class AppState: ObservableObject {
         hudController.hideImmediately()
         runtimeInstaller.cancel()
         asrService.shutdown()
+        textProcessingService.shutdown()
         NSApplication.shared.terminate(nil)
+    }
+
+    private func process(
+        transcription: TranscriptionResult,
+        mode: TextProcessingMode,
+        pasteTarget: pid_t?
+    ) {
+        guard mode.usesLocalModel else {
+            lastOutputMode = .verbatim
+            deliver(transcription.text, into: pasteTarget)
+            return
+        }
+
+        isProcessingText = true
+        status = "\(mode.activityTitle) локально…"
+        hudController.showEditing(mode: mode.title)
+
+        textProcessingService.process(
+            text: transcription.text,
+            mode: mode
+        ) { [weak self] result in
+            guard let self else { return }
+            self.isProcessingText = false
+
+            switch result {
+            case .success(let processed):
+                self.lastOutputMode = processed.mode
+                self.lastMetrics =
+                    "\(self.asrMetrics(for: transcription)) · редактор \(String(format: "%.1f с", processed.latency))"
+                ComparisonLogger.appendPostProcessing(
+                    requestID: transcription.requestID,
+                    mode: processed.mode,
+                    sourceText: transcription.text,
+                    outputText: processed.text,
+                    latency: processed.latency
+                )
+                self.deliver(processed.text, into: pasteTarget)
+            case .failure(let error):
+                NSLog("VoiceSwitch text processing fallback: \(error.localizedDescription)")
+                self.lastOutputMode = .verbatim
+                self.lastMetrics =
+                    "\(self.asrMetrics(for: transcription)) · редактор недоступен"
+                self.deliver(
+                    transcription.text,
+                    into: pasteTarget,
+                    fallback: true
+                )
+            }
+        }
+    }
+
+    private func deliver(
+        _ text: String,
+        into pasteTarget: pid_t?,
+        fallback: Bool = false
+    ) {
+        lastText = text
+        targetPID = nil
+
+        if autoPaste {
+            let pasted = TextInjector.paste(text, into: pasteTarget)
+            if fallback {
+                status = pasted
+                    ? "Редактор недоступен — вставлена исходная расшифровка."
+                    : "Редактор недоступен — исходная расшифровка скопирована."
+                hudController.showSuccess(
+                    pasted ? "Вставлен исходный текст" : "Исходный текст скопирован"
+                )
+            } else {
+                status = pasted
+                    ? "Готово — текст вставлен."
+                    : "Готово — текст скопирован. Разрешите универсальный доступ для автовставки."
+                hudController.showSuccess(
+                    pasted ? "Текст вставлен" : "Текст скопирован"
+                )
+            }
+        } else {
+            TextInjector.copy(text)
+            status = fallback
+                ? "Редактор недоступен — исходная расшифровка скопирована."
+                : "Готово — текст скопирован."
+            hudController.showSuccess(
+                fallback ? "Исходный текст скопирован" : "Текст скопирован"
+            )
+        }
+    }
+
+    private func asrMetrics(for transcription: TranscriptionResult) -> String {
+        let factor = transcription.audioDuration > 0
+            ? transcription.latency / transcription.audioDuration
+            : 0
+        return String(
+            format: "%.1f с аудио → %.1f с ASR · RTF %.2f",
+            transcription.audioDuration,
+            transcription.latency,
+            factor
+        )
     }
 
     private func beginRecording() {

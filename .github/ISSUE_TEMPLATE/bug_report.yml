@@ -11,7 +11,7 @@ body:
     id: version
     attributes:
       label: Версия VoiceSwitch
-      placeholder: v0.2.0-beta
+      placeholder: v0.3.0-beta
     validations:
       required: true
   - type: input

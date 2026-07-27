@@ -54,6 +54,7 @@ enum ComparisonLogger {
     static func appendEvaluation(
         requestID: String,
         engine: ASREngine,
+        textMode: TextProcessingMode,
         rating: String
     ) {
         let formatter = ISO8601DateFormatter()
@@ -62,7 +63,29 @@ enum ComparisonLogger {
             "type": "evaluation",
             "request_id": requestID,
             "engine": engine.rawValue,
+            "text_mode": textMode.rawValue,
             "rating": rating
+        ]
+        appendRaw(record)
+    }
+
+    static func appendPostProcessing(
+        requestID: String,
+        mode: TextProcessingMode,
+        sourceText: String,
+        outputText: String,
+        latency: Double
+    ) {
+        let formatter = ISO8601DateFormatter()
+        let record: [String: Any] = [
+            "timestamp": formatter.string(from: Date()),
+            "type": "text_processing",
+            "request_id": requestID,
+            "text_mode": mode.rawValue,
+            "model": "Qwen/Qwen3-4B-MLX-4bit",
+            "latency_seconds": latency,
+            "source_text": sourceText,
+            "output_text": outputText
         ]
         appendRaw(record)
     }

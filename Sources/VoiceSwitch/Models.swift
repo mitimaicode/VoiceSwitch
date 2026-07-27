@@ -74,6 +74,51 @@ enum ASREngine: String, CaseIterable, Identifiable, Codable {
     }
 }
 
+enum TextProcessingMode: String, CaseIterable, Identifiable, Codable {
+    case verbatim
+    case corrected
+    case concise
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .verbatim:
+            return "Дословно"
+        case .corrected:
+            return "Исправить"
+        case .concise:
+            return "Кратко"
+        }
+    }
+
+    var detail: String {
+        switch self {
+        case .verbatim:
+            return "Вставить расшифровку без изменений"
+        case .corrected:
+            return "Исправить пунктуацию, повторы и слова-паразиты без сокращения смысла"
+        case .concise:
+            return "Сделать короткое естественное сообщение, сохранив факты и просьбы"
+        }
+    }
+
+    var activityTitle: String {
+        switch self {
+        case .verbatim:
+            return "Подготавливаю текст"
+        case .corrected:
+            return "Исправляю текст"
+        case .concise:
+            return "Сокращаю сообщение"
+        }
+    }
+
+    var usesLocalModel: Bool {
+        self != .verbatim
+    }
+}
+
 struct TranscriptionResult {
     let requestID: String
     let engine: ASREngine
@@ -81,6 +126,13 @@ struct TranscriptionResult {
     let latency: Double
     let audioDuration: Double
     let detectedLanguage: String?
+}
+
+struct TextProcessingResult {
+    let requestID: String
+    let mode: TextProcessingMode
+    let text: String
+    let latency: Double
 }
 
 enum VoiceSwitchError: LocalizedError {

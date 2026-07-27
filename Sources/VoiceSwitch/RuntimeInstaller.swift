@@ -41,7 +41,8 @@ final class RuntimeInstaller {
                 newProcess.arguments = [
                     installer.path,
                     RuntimePaths.runtimeRoot.path,
-                    RuntimePaths.workerScript.path
+                    RuntimePaths.workerScript.path,
+                    RuntimePaths.textWorkerScript.path
                 ]
                 newProcess.standardOutput = newOutput
                 newProcess.standardError = newOutput

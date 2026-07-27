@@ -6,6 +6,7 @@ PROJECT_ROOT=${SCRIPT_DIR:h}
 
 export VOICESWITCH_RUNTIME="${PROJECT_ROOT}/Runtime"
 export VOICESWITCH_WORKER="${PROJECT_ROOT}/worker/asr_worker.py"
+export VOICESWITCH_TEXT_WORKER="${PROJECT_ROOT}/worker/text_worker.py"
 export VOICESWITCH_PYTHON="${PROJECT_ROOT}/Runtime/venv/bin/python3"
 
 cd "${PROJECT_ROOT}"

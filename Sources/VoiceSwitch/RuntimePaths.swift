@@ -1,7 +1,7 @@
 import Foundation
 
 enum RuntimePaths {
-    static let expectedRuntimeVersion = 2
+    static let expectedRuntimeVersion = 3
 
     static var distributionRoot: URL {
         Bundle.main.bundleURL.deletingLastPathComponent()
@@ -66,6 +66,18 @@ enum RuntimePaths {
         }
 
         return applicationSupportRoot.appendingPathComponent("asr_worker.py")
+    }
+
+    static var textWorkerScript: URL {
+        if let custom = ProcessInfo.processInfo.environment["VOICESWITCH_TEXT_WORKER"] {
+            return URL(fileURLWithPath: custom)
+        }
+
+        if let bundled = Bundle.main.url(forResource: "text_worker", withExtension: "py") {
+            return bundled
+        }
+
+        return applicationSupportRoot.appendingPathComponent("text_worker.py")
     }
 
     static var installerScript: URL? {

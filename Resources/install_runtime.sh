@@ -1,8 +1,9 @@
 #!/bin/zsh
 set -euo pipefail
 
-RUNTIME_ROOT=${1:?Usage: install_runtime.sh RUNTIME_ROOT WORKER_SCRIPT}
-WORKER_SCRIPT=${2:?Usage: install_runtime.sh RUNTIME_ROOT WORKER_SCRIPT}
+RUNTIME_ROOT=${1:?Usage: install_runtime.sh RUNTIME_ROOT ASR_WORKER TEXT_WORKER}
+ASR_WORKER=${2:?Usage: install_runtime.sh RUNTIME_ROOT ASR_WORKER TEXT_WORKER}
+TEXT_WORKER=${3:?Usage: install_runtime.sh RUNTIME_ROOT ASR_WORKER TEXT_WORKER}
 TOOLS_ROOT="${RUNTIME_ROOT}/Tools"
 UV_ROOT="${TOOLS_ROOT}/uv"
 UV_EXECUTABLE="${UV_ROOT}/uv"
@@ -28,7 +29,8 @@ fail() {
 
 [[ "$(uname -s)" == "Darwin" ]] || fail "VoiceSwitch поддерживает только macOS."
 [[ "$(uname -m)" == "arm64" ]] || fail "Эта beta-версия предназначена для Mac с Apple Silicon."
-[[ -f "${WORKER_SCRIPT}" ]] || fail "Не найден модуль распознавания."
+[[ -f "${ASR_WORKER}" ]] || fail "Не найден модуль распознавания."
+[[ -f "${TEXT_WORKER}" ]] || fail "Не найден модуль локального редактора."
 command -v curl >/dev/null 2>&1 || fail "В macOS не найден curl."
 
 if [[ "${VOICESWITCH_SETUP_VALIDATE_ONLY:-0}" == "1" ]]; then
@@ -87,6 +89,7 @@ status "Устанавливаю локальные движки распозн�
   "numpy<3" \
   "huggingface_hub[hf_xet]" \
   imageio-ffmpeg \
+  "mlx-lm==0.31.3" \
   mlx-whisper \
   "mlx-qwen3-asr==0.3.5" \
   "${GIGAAM_ARCHIVE}"
@@ -97,26 +100,32 @@ FFMPEG_EXECUTABLE=$(
 ln -sf "${FFMPEG_EXECUTABLE}" "${BIN_ROOT}/ffmpeg"
 
 status "Загружаю Whisper Large V3 Turbo…"
-"${PYTHON}" "${WORKER_SCRIPT}" \
+"${PYTHON}" "${ASR_WORKER}" \
   --download \
   --engine whisper \
   --cache "${MODEL_ROOT}"
 
 status "Загружаю GigaAM v3 E2E RNNT…"
-"${PYTHON}" "${WORKER_SCRIPT}" \
+"${PYTHON}" "${ASR_WORKER}" \
   --download \
   --engine gigaam \
   --cache "${MODEL_ROOT}"
 
 status "Загружаю Qwen3-ASR 1.7B…"
-"${PYTHON}" "${WORKER_SCRIPT}" \
+"${PYTHON}" "${ASR_WORKER}" \
   --download \
   --engine qwen \
   --cache "${MODEL_ROOT}"
 
-print -r -- "runtime_version=2" > "${RUNTIME_ROOT}/install-complete.txt"
+status "Загружаю локальный редактор Qwen3-4B…"
+"${PYTHON}" "${TEXT_WORKER}" \
+  --download \
+  --cache "${MODEL_ROOT}"
+
+print -r -- "runtime_version=3" > "${RUNTIME_ROOT}/install-complete.txt"
 print -r -- "uv_version=${UV_VERSION}" >> "${RUNTIME_ROOT}/install-complete.txt"
 print -r -- "gigaam_commit=${GIGAAM_COMMIT}" >> "${RUNTIME_ROOT}/install-complete.txt"
 print -r -- "qwen_model=Qwen/Qwen3-ASR-1.7B" >> "${RUNTIME_ROOT}/install-complete.txt"
+print -r -- "text_model=Qwen/Qwen3-4B-MLX-4bit" >> "${RUNTIME_ROOT}/install-complete.txt"
 
-status "Готово — три локальные модели установлены."
+status "Готово — распознавание и локальный редактор установлены."

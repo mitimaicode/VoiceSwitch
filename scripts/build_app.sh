@@ -72,6 +72,7 @@ mkdir -p \
 cp "${PROJECT_ROOT}/.build/release/VoiceSwitch" "${CONTENTS}/MacOS/VoiceSwitch"
 cp "${PROJECT_ROOT}/Resources/Info.plist" "${CONTENTS}/Info.plist"
 cp "${PROJECT_ROOT}/worker/asr_worker.py" "${CONTENTS}/Resources/asr_worker.py"
+cp "${PROJECT_ROOT}/worker/text_worker.py" "${CONTENTS}/Resources/text_worker.py"
 cp "${PROJECT_ROOT}/Resources/install_runtime.sh" "${CONTENTS}/Resources/install_runtime.sh"
 cp "${PROJECT_ROOT}/README.md" "${OUTPUT_ROOT}/README.md"
 

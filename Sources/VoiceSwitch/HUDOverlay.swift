@@ -6,6 +6,7 @@ enum HUDPhase: Equatable {
     case hidden
     case recording(startedAt: Date)
     case transcribing(startedAt: Date, engine: String)
+    case editing(startedAt: Date, mode: String)
     case success(message: String)
     case failure(message: String)
 }
@@ -58,6 +59,10 @@ final class HUDController {
 
     func showTranscribing(engine: String) {
         present(.transcribing(startedAt: Date(), engine: engine))
+    }
+
+    func showEditing(mode: String) {
+        present(.editing(startedAt: Date(), mode: mode))
     }
 
     func showSuccess(_ message: String) {
@@ -144,6 +149,9 @@ struct MenuBarStatusIcon: View {
         case .transcribing:
             Image(systemName: "ellipsis.circle")
                 .symbolEffect(.variableColor.iterative, options: .repeating)
+        case .editing:
+            Image(systemName: "text.badge.sparkles")
+                .symbolEffect(.pulse, options: .repeating)
         case .success:
             Image(systemName: "checkmark.circle.fill")
         case .failure:
@@ -214,6 +222,16 @@ private struct HUDOverlayView: View {
                     .controlSize(.small)
                     .tint(.indigo)
             }
+        case .editing:
+            ZStack {
+                Circle()
+                    .fill(Color.purple.opacity(0.16))
+                    .frame(width: 38, height: 38)
+                Image(systemName: "text.badge.sparkles")
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundStyle(.purple)
+                    .symbolEffect(.pulse, options: .repeating)
+            }
         case .success:
             ZStack {
                 Circle()
@@ -243,6 +261,8 @@ private struct HUDOverlayView: View {
             return "Идёт запись"
         case .transcribing:
             return "Распознаю речь"
+        case .editing:
+            return "Редактирую текст"
         case .success(let message), .failure(let message):
             return message
         case .hidden:
@@ -256,6 +276,8 @@ private struct HUDOverlayView: View {
             return "fn + ⌥ — остановить"
         case .transcribing(_, let engine):
             return "\(engine) · дождитесь завершения"
+        case .editing(_, let mode):
+            return "\(mode) · локально на Mac"
         case .success:
             return "Готово"
         case .failure:
@@ -267,7 +289,9 @@ private struct HUDOverlayView: View {
 
     private var startedAt: Date? {
         switch model.phase {
-        case .recording(let date), .transcribing(let date, _):
+        case .recording(let date),
+             .transcribing(let date, _),
+             .editing(let date, _):
             return date
         default:
             return nil
@@ -280,6 +304,8 @@ private struct HUDOverlayView: View {
             return .red
         case .transcribing:
             return .indigo
+        case .editing:
+            return .purple
         case .success:
             return .green
         case .failure:

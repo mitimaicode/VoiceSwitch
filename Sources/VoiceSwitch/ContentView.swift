@@ -11,6 +11,7 @@ struct ContentView: View {
                 runtimeSetupSection
             }
             enginePicker
+            textModePicker
             recordSection
             resultSection
             settingsSection
@@ -31,7 +32,7 @@ struct ContentView: View {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Установка локальных моделей")
                         .font(.subheadline.weight(.semibold))
-                    Text("Python, GigaAM, Whisper и Qwen 1.7B · около 8 ГБ")
+                    Text("Распознавание и Qwen3-4B для редактуры · около 12 ГБ")
                         .font(.caption2)
                         .foregroundStyle(.secondary)
                 }
@@ -91,7 +92,7 @@ struct ContentView: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text("VoiceSwitch")
                     .font(.headline)
-                Text("Локальная диктовка · четыре модели")
+                Text("Локальная диктовка и редактура текста")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -111,9 +112,29 @@ struct ContentView: View {
                 }
             }
             .pickerStyle(.segmented)
-            .disabled(state.isRecording || state.isTranscribing || state.isInstallingRuntime)
+            .disabled(state.isRecording || state.isBusy || state.isInstallingRuntime)
 
             Text(state.selectedEngine.detail)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    private var textModePicker: some View {
+        VStack(alignment: .leading, spacing: 7) {
+            Text("Обработка текста")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+
+            Picker("Обработка текста", selection: $state.textProcessingMode) {
+                ForEach(TextProcessingMode.allCases) { mode in
+                    Text(mode.title).tag(mode)
+                }
+            }
+            .pickerStyle(.segmented)
+            .disabled(state.isRecording || state.isBusy || state.isInstallingRuntime)
+
+            Text(state.textProcessingMode.detail)
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
@@ -135,10 +156,10 @@ struct ContentView: View {
             }
             .buttonStyle(.borderedProminent)
             .tint(state.isRecording ? .red : .indigo)
-            .disabled(state.isTranscribing || !state.selectedEngineReady || state.isInstallingRuntime)
+            .disabled(state.isBusy || !state.selectedEngineReady || state.isInstallingRuntime)
 
             HStack(spacing: 7) {
-                if state.isTranscribing {
+                if state.isBusy {
                     ProgressView()
                         .controlSize(.small)
                 } else {
@@ -160,9 +181,15 @@ struct ContentView: View {
         if !state.lastText.isEmpty {
             VStack(alignment: .leading, spacing: 6) {
                 HStack {
-                    Text("Последний результат")
+                    Text("Последний текст")
                         .font(.caption)
                         .foregroundStyle(.secondary)
+                    Text(state.lastOutputMode.title)
+                        .font(.caption2.weight(.medium))
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2)
+                        .background(Color.indigo.opacity(0.1))
+                        .clipShape(Capsule())
                     Spacer()
                     Text(state.lastMetrics)
                         .font(.caption2)
@@ -184,10 +211,10 @@ struct ContentView: View {
                     Text("Оценка:")
                         .font(.caption2)
                         .foregroundStyle(.secondary)
-                    Button("Точно") {
+                    Button("Хорошо") {
                         state.rateLastResult("accurate")
                     }
-                    Button("Есть ошибки") {
+                    Button("Нужно исправить") {
                         state.rateLastResult("errors")
                     }
                     Spacer()
@@ -229,10 +256,10 @@ struct ContentView: View {
             .foregroundStyle(.secondary)
 
             HStack {
-                Button("Подготовить модель") {
+                Button("Подготовить модели") {
                     state.prewarmSelectedEngine()
                 }
-                .disabled(!state.selectedEngineReady || state.isInstallingRuntime)
+                .disabled(!state.selectedEngineReady || state.isBusy || state.isInstallingRuntime)
                 Button("Разрешить доступ") {
                     state.requestAccessibility()
                 }

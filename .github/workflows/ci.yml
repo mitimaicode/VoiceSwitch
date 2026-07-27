@@ -20,11 +20,12 @@ jobs:
       - name: Validate scripts
         run: |
           zsh -n scripts/*.sh Resources/install_runtime.sh
-          python3 -m py_compile worker/asr_worker.py scripts/collect_github_stats.py
+          python3 -m py_compile worker/asr_worker.py worker/text_worker.py scripts/collect_github_stats.py
           VOICESWITCH_SETUP_VALIDATE_ONLY=1 \
             Resources/install_runtime.sh \
             "$RUNNER_TEMP/VoiceSwitch-Runtime" \
-            worker/asr_worker.py
+            worker/asr_worker.py \
+            worker/text_worker.py
 
       - name: Build VoiceSwitch
         run: swift build -c release

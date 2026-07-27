@@ -4,7 +4,7 @@
   <img src="assets/banner.svg" alt="VoiceSwitch — локальная диктовка для macOS" width="100%">
 </p>
 
-> Локальная диктовка для macOS с переключением между четырьмя движками распознавания.
+> Локальная диктовка и редактура текста для macOS.
 
 [![CI](https://github.com/mitimaicode/VoiceSwitch/actions/workflows/ci.yml/badge.svg)](https://github.com/mitimaicode/VoiceSwitch/actions/workflows/ci.yml)
 [![Latest release](https://img.shields.io/github/v/release/mitimaicode/VoiceSwitch?include_prereleases)](https://github.com/mitimaicode/VoiceSwitch/releases)
@@ -18,8 +18,10 @@ VoiceSwitch записывает речь по глобальной горяче
 - **Whisper Large V3 Turbo (MLX)** — для смешанной русско-английской речи;
 - **Qwen3-ASR 1.7B (MLX)** — точный многоязычный режим;
 - **Apple SpeechAnalyzer** — системная локальная диктовка на macOS 26+;
+- **Qwen3-4B (MLX)** — локально исправляет или сокращает расшифровку;
+- режимы текста **Дословно**, **Исправить** и **Кратко**;
 - `fn + ⌥ Option` — начать или остановить запись;
-- HUD показывает запись, длительную расшифровку и результат;
+- HUD показывает запись, расшифровку, локальную редактуру и результат;
 - аудио и текст не отправляются во внешние API;
 - журнал сравнения помогает выбрать модель под собственную речь.
 
@@ -32,7 +34,7 @@ VoiceSwitch записывает речь по глобальной горяче
 - Mac с Apple Silicon (`M1` или новее);
 - macOS 14 Sonoma или новее;
 - рекомендуется 16 ГБ оперативной памяти;
-- около 9 ГБ свободного места для Python, зависимостей и трёх загружаемых моделей;
+- около 12 ГБ свободного места для Python, зависимостей и четырёх загружаемых моделей;
 - интернет только во время первоначальной установки моделей.
 
 ## Установка
@@ -54,14 +56,22 @@ VoiceSwitch записывает речь по глобальной горяче
 ## Использование
 
 1. Выберите GigaAM, Whisper, Qwen или Apple в меню VoiceSwitch.
-2. Нажмите `fn + ⌥ Option`, чтобы начать запись.
-3. Отпустите клавиши и нажмите сочетание ещё раз, чтобы остановить запись.
-4. Дождитесь завершения расшифровки. Текст будет вставлен в ранее активное
+2. Выберите режим текста: **Дословно**, **Исправить** или **Кратко**.
+3. Нажмите `fn + ⌥ Option`, чтобы начать запись.
+4. Отпустите клавиши и нажмите сочетание ещё раз, чтобы остановить запись.
+5. Дождитесь завершения расшифровки и, если выбран соответствующий режим,
+   локальной редактуры. Текст будет вставлен в ранее активное
    окно или останется в буфере обмена, если универсальный доступ отключён.
 
 Во время записи отображается красный пульсирующий индикатор с таймером.
 Во время распознавания он сменяется индикатором модели и времени ожидания.
-HUD не перехватывает клики.
+При обработке Qwen появляется отдельный фиолетовый индикатор «Редактирую
+текст». HUD не перехватывает клики.
+
+Режим **Исправить** сохраняет содержательные детали, но убирает слова-паразиты,
+повторы и ошибки пунктуации. Режим **Кратко** превращает расшифровку в
+компактное сообщение для переписки. Если редактор вернёт ошибку, VoiceSwitch
+автоматически вставит исходную расшифровку.
 
 Модель загружается лениво. При переключении предыдущая загружаемая модель
 выгружается, чтобы не занимать память. Apple использует системные ресурсы
@@ -82,7 +92,8 @@ Runtime и веса моделей:
 ```
 
 В журнале сохраняются модель, длительность записи, время распознавания, RTF,
-определённый язык, результат и ваша оценка. Временные аудиофайлы удаляются
+определённый язык, исходная расшифровка, результат локальной редактуры, её
+режим и ваша оценка. Журнал остаётся на Mac. Временные аудиофайлы удаляются
 после обработки.
 
 ## Результаты сравнительного теста
@@ -132,7 +143,7 @@ chmod +x scripts/*.sh Resources/install_runtime.sh
 ./scripts/build_app.sh
 ```
 
-Установка трёх загружаемых моделей для разработки:
+Установка четырёх загружаемых моделей для разработки:
 
 ```zsh
 ./scripts/setup_models.sh
@@ -141,7 +152,7 @@ chmod +x scripts/*.sh Resources/install_runtime.sh
 Создание компактного release-архива без весов моделей:
 
 ```zsh
-./scripts/package_release.sh 0.2.0-beta
+./scripts/package_release.sh 0.3.0-beta
 ```
 
 ## Обратная связь
@@ -167,6 +178,8 @@ chmod +x scripts/*.sh Resources/install_runtime.sh
 - [MLX Whisper](https://github.com/ml-explore/mlx-examples/tree/main/whisper);
 - [Qwen3-ASR](https://github.com/QwenLM/Qwen3-ASR) — Apache-2.0;
 - [mlx-qwen3-asr](https://github.com/moona3k/mlx-qwen3-asr) — Apache-2.0;
+- [Qwen3-4B](https://huggingface.co/Qwen/Qwen3-4B-MLX-4bit) — Apache-2.0;
+- [MLX LM](https://github.com/ml-explore/mlx-lm) — MIT;
 - Apple Speech framework — системный компонент macOS;
 - [uv](https://github.com/astral-sh/uv) — Apache-2.0 / MIT.
 
@@ -179,8 +192,9 @@ VoiceSwitch не связан с авторами перечисленных п�
 
 VoiceSwitch is a local macOS dictation menu-bar app for Apple Silicon. It
 switches between GigaAM, Whisper Large V3 Turbo, Qwen3-ASR 1.7B, and Apple
-SpeechAnalyzer. Press `fn + Option` to start or stop recording. Audio and
-transcripts stay on the Mac. Apple SpeechAnalyzer requires macOS 26 or newer.
+SpeechAnalyzer. A local Qwen3-4B model can clean up or shorten the transcript.
+Press `fn + Option` to start or stop recording. Audio and transcripts stay on
+the Mac. Apple SpeechAnalyzer requires macOS 26 or newer.
 See [INSTALL.md](INSTALL.md) for installation details and use GitHub Issues or
 Discussions for feedback.
 

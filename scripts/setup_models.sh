@@ -7,4 +7,5 @@ RUNTIME_ROOT="${PROJECT_ROOT}/Runtime"
 
 "${PROJECT_ROOT}/Resources/install_runtime.sh" \
   "${RUNTIME_ROOT}" \
-  "${PROJECT_ROOT}/worker/asr_worker.py"
+  "${PROJECT_ROOT}/worker/asr_worker.py" \
+  "${PROJECT_ROOT}/worker/text_worker.py"
