@@ -1,4 +1,62 @@
 {
   "schema_version": 1,
-  "status": "Metrics collection starts after the first public release."
+  "collected_at": "2026-07-27T12:53:43.083621+00:00",
+  "repository": "mitimaicode/VoiceSwitch",
+  "community": {
+    "stars": 0,
+    "forks": 0,
+    "watchers": 0,
+    "open_issues_and_pull_requests": 1
+  },
+  "releases": {
+    "total_asset_downloads": 0,
+    "items": [
+      {
+        "tag": "v0.1.0-beta.2",
+        "name": "VoiceSwitch v0.1.0-beta.2",
+        "published_at": "2026-07-27T12:50:57Z",
+        "prerelease": true,
+        "assets": [
+          {
+            "name": "VoiceSwitch-0.1.0-beta.2-macos-arm64.zip",
+            "downloads": 0,
+            "size": 176466,
+            "updated_at": "2026-07-27T12:50:56Z"
+          },
+          {
+            "name": "VoiceSwitch-0.1.0-beta.2-macos-arm64.zip.sha256",
+            "downloads": 0,
+            "size": 107,
+            "updated_at": "2026-07-27T12:50:56Z"
+          }
+        ]
+      },
+      {
+        "tag": "v0.1.0-beta.1",
+        "name": "VoiceSwitch v0.1.0-beta.1",
+        "published_at": "2026-07-27T12:48:53Z",
+        "prerelease": true,
+        "assets": [
+          {
+            "name": "VoiceSwitch-0.1.0-beta.1-macos-arm64.zip",
+            "downloads": 0,
+            "size": 176467,
+            "updated_at": "2026-07-27T12:48:53Z"
+          },
+          {
+            "name": "VoiceSwitch-0.1.0-beta.1-macos-arm64.zip.sha256",
+            "downloads": 0,
+            "size": 155,
+            "updated_at": "2026-07-27T12:48:53Z"
+          }
+        ]
+      }
+    ]
+  },
+  "traffic_last_14_days": {
+    "views": null,
+    "clones": null,
+    "referrers": null,
+    "popular_paths": null
+  }
 }
