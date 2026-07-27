@@ -1,0 +1,38 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: macos-14
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build release archive
+        run: |
+          chmod +x scripts/*.sh Resources/install_runtime.sh
+          ./scripts/package_release.sh "${GITHUB_REF_NAME#v}"
+
+      - name: Publish GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          args=(
+            "$GITHUB_REF_NAME"
+            dist/VoiceSwitch-*.zip
+            dist/VoiceSwitch-*.zip.sha256
+            --generate-notes
+            --title "VoiceSwitch ${GITHUB_REF_NAME}"
+          )
+          if [[ "$GITHUB_REF_NAME" == *"-"* ]]; then
+            args+=(--prerelease)
+          fi
+          gh release create "${args[@]}"

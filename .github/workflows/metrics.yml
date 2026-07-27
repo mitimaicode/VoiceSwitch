@@ -1,0 +1,35 @@
+name: Archive repository metrics
+
+on:
+  schedule:
+    - cron: "17 3 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: repository-metrics
+
+jobs:
+  collect:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Collect GitHub metrics
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: python3 scripts/collect_github_stats.py
+
+      - name: Save snapshot
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add metrics/github-stats.json metrics/github-stats.jsonl
+          if ! git diff --cached --quiet; then
+            git commit -m "chore: archive repository metrics"
+            git push
+          fi

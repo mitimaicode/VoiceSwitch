@@ -1,0 +1,14 @@
+.DS_Store
+.build/
+.swiftpm/
+.tools/
+dist/
+Runtime/
+outputs/
+*.xcuserstate
+*.wav
+*.jsonl
+__pycache__/
+*.py[cod]
+.env
+.venv/

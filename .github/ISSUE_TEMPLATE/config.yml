@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Вопросы и обсуждения
+    url: https://github.com/mitimaicode/VoiceSwitch/discussions
+    about: Помощь с установкой, идеи и сравнение моделей
+  - name: Сообщить об уязвимости
+    url: https://github.com/mitimaicode/VoiceSwitch/security/advisories/new
+    about: Не публикуйте детали уязвимости в открытом Issue

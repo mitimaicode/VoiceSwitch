@@ -1,0 +1,37 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: macos-14
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validate scripts
+        run: |
+          zsh -n scripts/*.sh Resources/install_runtime.sh
+          python3 -m py_compile worker/asr_worker.py scripts/collect_github_stats.py
+          VOICESWITCH_SETUP_VALIDATE_ONLY=1 \
+            Resources/install_runtime.sh \
+            "$RUNNER_TEMP/VoiceSwitch-Runtime" \
+            worker/asr_worker.py
+
+      - name: Build VoiceSwitch
+        run: swift build -c release
+
+      - name: Assemble app bundle
+        run: |
+          chmod +x scripts/*.sh Resources/install_runtime.sh
+          ./scripts/build_app.sh "$RUNNER_TEMP/VoiceSwitch"
+          codesign --verify --deep --strict "$RUNNER_TEMP/VoiceSwitch/VoiceSwitch.app"
+          plutil -lint "$RUNNER_TEMP/VoiceSwitch/VoiceSwitch.app/Contents/Info.plist"
