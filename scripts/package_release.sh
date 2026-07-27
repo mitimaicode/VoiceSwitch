@@ -35,5 +35,9 @@ ditto \
   "${STAGING_ROOT}" \
   "${ARCHIVE}"
 
-shasum -a 256 "${ARCHIVE}" > "${ARCHIVE}.sha256"
+ARCHIVE_NAME="${ARCHIVE:t}"
+(
+  cd "${DIST_ROOT}"
+  shasum -a 256 "${ARCHIVE_NAME}" > "${ARCHIVE_NAME}.sha256"
+)
 print "Релиз: ${ARCHIVE}"
