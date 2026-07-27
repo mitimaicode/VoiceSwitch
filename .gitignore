@@ -8,6 +8,7 @@ outputs/
 *.xcuserstate
 *.wav
 *.jsonl
+!metrics/github-stats.jsonl
 __pycache__/
 *.py[cod]
 .env
