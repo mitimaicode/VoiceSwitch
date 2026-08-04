@@ -51,15 +51,32 @@ struct ContentView: View {
                 }
                 .controlSize(.small)
             } else {
-                Text("Данные речи остаются на Mac. Компоненты загружаются из Astral, Hugging Face, PyPI, GigaAM и Qwen.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                if let installError = state.runtimeInstallError {
+                    Text(installError)
+                        .font(.caption)
+                        .foregroundStyle(.red)
+                        .lineLimit(6)
+                        .textSelection(.enabled)
+                    Text("Повторный запуск продолжит загрузку и использует уже сохранённые файлы.")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                } else {
+                    Text("Данные речи остаются на Mac. Компоненты загружаются из Astral, Hugging Face, PyPI, GigaAM и Qwen.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
                 HStack {
-                    Button("Установить модели") {
+                    Button(state.runtimeInstallError == nil ? "Установить модели" : "Продолжить установку") {
                         state.installRuntime()
                     }
                     .buttonStyle(.borderedProminent)
                     .tint(.indigo)
+                    if state.runtimeInstallError != nil {
+                        Button("Журнал") {
+                            state.openRuntimeInstallLog()
+                        }
+                        .controlSize(.small)
+                    }
                     Button("Папка Runtime") {
                         state.openRuntimeFolder()
                     }

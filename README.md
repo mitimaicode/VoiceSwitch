@@ -64,6 +64,11 @@ VoiceSwitch записывает речь по глобальной горяче
 
 Подробности и решение типовых проблем приведены в [INSTALL.md](INSTALL.md).
 
+Если соединение прервётся, нажмите **Продолжить установку**: VoiceSwitch
+повторит сетевую операцию и использует уже загруженные файлы. Причина сбоя
+показывается в меню, а полный журнал сохраняется в
+`~/Library/Application Support/VoiceSwitch/Runtime/install.log`.
+
 ## Использование
 
 1. Выберите GigaAM, Whisper, Qwen или Apple в меню VoiceSwitch.
@@ -163,7 +168,7 @@ chmod +x scripts/*.sh Resources/install_runtime.sh
 Создание компактного release-архива без весов моделей:
 
 ```zsh
-./scripts/package_release.sh 0.3.0-beta
+./scripts/package_release.sh 0.3.1-beta
 ```
 
 ## Обратная связь

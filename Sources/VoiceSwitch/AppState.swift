@@ -56,6 +56,7 @@ final class AppState: ObservableObject {
     @Published private(set) var runtimeReady = RuntimePaths.isRuntimeReady
     @Published private(set) var isInstallingRuntime = false
     @Published private(set) var runtimeInstallStatus = ""
+    @Published private(set) var runtimeInstallError: String?
 
     let hudModel: HUDModel
 
@@ -280,6 +281,7 @@ final class AppState: ObservableObject {
         guard !isInstallingRuntime, !runtimeReady else { return }
 
         isInstallingRuntime = true
+        runtimeInstallError = nil
         runtimeInstallStatus = "Подготавливаю установку…"
         status = "Установка локальных моделей…"
 
@@ -295,14 +297,16 @@ final class AppState: ObservableObject {
                 switch result {
                 case .success:
                     self.runtimeReady = RuntimePaths.isRuntimeReady
+                    self.runtimeInstallError = nil
                     self.runtimeInstallStatus = "Распознавание и локальный редактор готовы к работе."
                     self.status = "Готово к записи"
                     self.hudController.showSuccess("Модели установлены")
                 case .failure(let error):
                     self.runtimeReady = RuntimePaths.isRuntimeReady
+                    self.runtimeInstallError = error.localizedDescription
                     self.runtimeInstallStatus = error.localizedDescription
                     self.status = "Не удалось установить модели."
-                    self.hudController.showFailure("Ошибка установки")
+                    self.hudController.showFailure("Установка прервана")
                 }
             }
         )
@@ -320,6 +324,15 @@ final class AppState: ObservableObject {
             withIntermediateDirectories: true
         )
         NSWorkspace.shared.open(RuntimePaths.runtimeRoot)
+    }
+
+    func openRuntimeInstallLog() {
+        let log = RuntimePaths.installLogFile
+        if FileManager.default.fileExists(atPath: log.path) {
+            NSWorkspace.shared.activateFileViewerSelecting([log])
+        } else {
+            openRuntimeFolder()
+        }
     }
 
     func rateLastResult(_ rating: String) {

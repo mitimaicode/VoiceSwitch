@@ -103,4 +103,8 @@ enum RuntimePaths {
         applicationSupportRoot
             .appendingPathComponent("comparison.jsonl")
     }
+
+    static var installLogFile: URL {
+        runtimeRoot.appendingPathComponent("install.log")
+    }
 }

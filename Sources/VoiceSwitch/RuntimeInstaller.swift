@@ -8,6 +8,13 @@ final class RuntimeInstaller {
     private var process: Process?
     private var outputPipe: Pipe?
     private var outputBuffer = Data()
+    private var reportedFailure: String?
+    private var recentDiagnostics: [String] = []
+    private var wasCancelled = false
+
+    private let statusMarker = "__VOICESWITCH_SETUP__"
+    private let errorMarker = "__VOICESWITCH_SETUP_ERROR__"
+    private let maximumDiagnosticLines = 16
 
     var isRunning: Bool {
         queue.sync {
@@ -22,6 +29,11 @@ final class RuntimeInstaller {
         queue.async { [weak self] in
             guard let self else { return }
             guard self.process?.isRunning != true else { return }
+
+            self.outputBuffer.removeAll()
+            self.reportedFailure = nil
+            self.recentDiagnostics.removeAll()
+            self.wasCancelled = false
 
             do {
                 guard let installer = RuntimePaths.installerScript else {
@@ -73,6 +85,10 @@ final class RuntimeInstaller {
                             self.consume(tail + Data([0x0A]), status: status)
                         }
 
+                        let failureMessage = self.failureMessage(
+                            terminationStatus: terminated.terminationStatus
+                        )
+
                         DispatchQueue.main.async {
                             if terminated.terminationStatus == 0,
                                RuntimePaths.isRuntimeReady {
@@ -80,7 +96,7 @@ final class RuntimeInstaller {
                             } else {
                                 completion(.failure(
                                     VoiceSwitchError.runtimeMissing(
-                                        "Установка завершилась с кодом \(terminated.terminationStatus)."
+                                        failureMessage
                                     )
                                 ))
                             }
@@ -102,6 +118,7 @@ final class RuntimeInstaller {
     func cancel() {
         queue.async { [weak self] in
             guard let self, let process = self.process, process.isRunning else { return }
+            self.wasCancelled = true
             process.terminate()
         }
     }
@@ -115,16 +132,64 @@ final class RuntimeInstaller {
             guard let line = String(data: lineData, encoding: .utf8) else { continue }
 
             let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
-            let marker = "__VOICESWITCH_SETUP__"
-            if trimmed.hasPrefix(marker) {
-                let message = String(trimmed.dropFirst(marker.count))
+            if trimmed.hasPrefix(statusMarker) {
+                let message = String(trimmed.dropFirst(statusMarker.count))
                 DispatchQueue.main.async {
                     status(message)
                 }
+            } else if trimmed.hasPrefix(errorMarker) {
+                let message = String(trimmed.dropFirst(errorMarker.count))
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                if !message.isEmpty {
+                    reportedFailure = message
+                }
             } else if !trimmed.isEmpty {
+                let diagnostic = trimmed
+                    .replacingOccurrences(
+                        of: "\\u{001B}\\[[0-9;]*[A-Za-z]",
+                        with: "",
+                        options: .regularExpression
+                    )
+                recentDiagnostics.append(diagnostic)
+                if recentDiagnostics.count > maximumDiagnosticLines {
+                    recentDiagnostics.removeFirst(
+                        recentDiagnostics.count - maximumDiagnosticLines
+                    )
+                }
                 NSLog("VoiceSwitch setup: \(trimmed)")
             }
         }
+    }
+
+    private func failureMessage(terminationStatus: Int32) -> String {
+        if wasCancelled {
+            return "Установка остановлена. Нажмите «Продолжить установку»: уже загруженные файлы сохранятся."
+        }
+
+        let primary = reportedFailure
+            ?? "Установка завершилась с кодом \(terminationStatus)."
+        guard let detail = recentDiagnostics.reversed().first(where: isUsefulDiagnostic) else {
+            return primary
+        }
+
+        let shortened = detail.count > 260
+            ? String(detail.prefix(260)) + "…"
+            : detail
+        if primary.localizedCaseInsensitiveContains(shortened) {
+            return primary
+        }
+        return "\(primary)\nПричина: \(shortened)"
+    }
+
+    private func isUsefulDiagnostic(_ line: String) -> Bool {
+        let normalized = line.lowercased()
+        let ignoredFragments = [
+            "downloading", "resolving", "prepared", "installed",
+            "audited", "using python", "__voiceswitch_json__",
+            "сбой на этапе"
+        ]
+        return !ignoredFragments.contains(where: normalized.contains)
+            && !normalized.isEmpty
     }
 
     deinit {

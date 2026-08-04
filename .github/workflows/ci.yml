@@ -27,6 +27,25 @@ jobs:
             worker/asr_worker.py \
             worker/text_worker.py
 
+      - name: Validate installer retry diagnostics
+        run: |
+          runtime_root="$RUNNER_TEMP/VoiceSwitch-Failing-Runtime"
+          mkdir -p "$runtime_root/Tools/uv"
+          ln -s /usr/bin/false "$runtime_root/Tools/uv/uv"
+          set +e
+          output=$(
+            VOICESWITCH_RETRY_DELAY_SECONDS=0 \
+              Resources/install_runtime.sh \
+              "$runtime_root" \
+              worker/asr_worker.py \
+              worker/text_worker.py 2>&1
+          )
+          exit_code=$?
+          set -e
+          test "$exit_code" -ne 0
+          printf '%s\n' "$output" | grep -q '__VOICESWITCH_SETUP_ERROR__'
+          grep -q 'Устанавливаю изолированный Python 3.12' "$runtime_root/install.log"
+
       - name: Build VoiceSwitch
         run: swift build -c release
 
