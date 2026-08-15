@@ -1,7 +1,7 @@
 import Foundation
 
 enum RuntimePaths {
-    static let expectedRuntimeVersion = 3
+    static let expectedRuntimeVersion = 4
 
     static var distributionRoot: URL {
         Bundle.main.bundleURL.deletingLastPathComponent()

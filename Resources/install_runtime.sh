@@ -60,7 +60,7 @@ run_with_retries() {
 
     attempt=$(( attempt + 1 ))
     status \
-      "Сетевая операция прервалась. Повтор ${attempt} из ${maximum_attempts}; загруженные файлы сохраняются…"
+      "Этап не завершён. Повтор ${attempt} из ${maximum_attempts}; загруженные файлы сохраняются…"
     /bin/sleep $(( attempt * RETRY_DELAY_SECONDS ))
   done
 
@@ -183,7 +183,14 @@ run_with_retries \
     "mlx-lm==0.31.3" \
     mlx-whisper \
     "mlx-qwen3-asr==0.3.5" \
+    torchaudio \
     "${GIGAAM_ARCHIVE}" || fail_step "Устанавливаю локальные движки распознавания"
+
+status "Проверяю зависимости GigaAM…"
+if ! "${PYTHON}" -c 'import torch, torchaudio, gigaam'; then
+  fail \
+    "Не удалось загрузить зависимости GigaAM (torch/torchaudio). Нажмите «Продолжить установку», чтобы восстановить окружение. Журнал: ${LOG_FILE}"
+fi
 
 if ! FFMPEG_EXECUTABLE=$(
   "${PYTHON}" -c 'import imageio_ffmpeg; print(imageio_ffmpeg.get_ffmpeg_exe())'
@@ -224,7 +231,7 @@ run_with_retries \
     --download \
     --cache "${MODEL_ROOT}" || fail_step "Загружаю локальный редактор Qwen3-4B"
 
-print -r -- "runtime_version=3" > "${RUNTIME_ROOT}/install-complete.txt"
+print -r -- "runtime_version=4" > "${RUNTIME_ROOT}/install-complete.txt"
 print -r -- "uv_version=${UV_VERSION}" >> "${RUNTIME_ROOT}/install-complete.txt"
 print -r -- "gigaam_commit=${GIGAAM_COMMIT}" >> "${RUNTIME_ROOT}/install-complete.txt"
 print -r -- "qwen_model=Qwen/Qwen3-ASR-1.7B" >> "${RUNTIME_ROOT}/install-complete.txt"
