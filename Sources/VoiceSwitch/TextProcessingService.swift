@@ -69,6 +69,11 @@ final class TextProcessingService {
     }
 
     private func ensureWorker() throws {
+        guard RuntimePaths.isInstalled(.textEditor) else {
+            throw VoiceSwitchError.runtimeMissing(
+                "Локальный редактор Qwen3-4B ещё не установлен. Выберите его в меню VoiceSwitch."
+            )
+        }
         if let process, process.isRunning {
             return
         }

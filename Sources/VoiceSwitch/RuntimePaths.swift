@@ -86,13 +86,63 @@ enum RuntimePaths {
 
     static var isRuntimeReady: Bool {
         guard FileManager.default.isExecutableFile(atPath: pythonExecutable.path),
-              let marker = try? String(
-                contentsOf: runtimeRoot.appendingPathComponent("install-complete.txt"),
-                encoding: .utf8
-              ) else {
+              let marker = installMarkerContents else {
             return false
         }
         return marker.contains("runtime_version=\(expectedRuntimeVersion)")
+    }
+
+    static var installedComponents: Set<RuntimeComponent> {
+        guard isRuntimeReady, let marker = installMarkerContents else {
+            return []
+        }
+
+        let explicitComponents = Set(
+            marker
+                .split(separator: "\n")
+                .compactMap { line -> RuntimeComponent? in
+                    let prefix = "component="
+                    guard line.hasPrefix(prefix) else { return nil }
+                    return RuntimeComponent(rawValue: String(line.dropFirst(prefix.count)))
+                }
+        )
+
+        if marker.contains("selective_install=1") {
+            return explicitComponents.union(componentMarkerComponents)
+        }
+
+        // Runtime v4 до выборочной установки всегда загружал все четыре модели.
+        // Считаем его полным, чтобы обновление приложения не заставляло людей
+        // повторно скачивать уже существующие веса.
+        return Set(RuntimeComponent.allCases)
+    }
+
+    static func isInstalled(_ component: RuntimeComponent) -> Bool {
+        installedComponents.contains(component)
+    }
+
+    static var installMarker: URL {
+        runtimeRoot.appendingPathComponent("install-complete.txt")
+    }
+
+    static var componentMarkersRoot: URL {
+        runtimeRoot.appendingPathComponent("components", isDirectory: true)
+    }
+
+    static func componentMarker(_ component: RuntimeComponent) -> URL {
+        componentMarkersRoot.appendingPathComponent("\(component.rawValue).ready")
+    }
+
+    private static var installMarkerContents: String? {
+        try? String(contentsOf: installMarker, encoding: .utf8)
+    }
+
+    private static var componentMarkerComponents: Set<RuntimeComponent> {
+        Set(
+            RuntimeComponent.allCases.filter {
+                FileManager.default.fileExists(atPath: componentMarker($0).path)
+            }
+        )
     }
 
     static var modelCache: URL {

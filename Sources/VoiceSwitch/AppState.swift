@@ -2,15 +2,17 @@ import AppKit
 import AVFoundation
 import Combine
 import Foundation
+import SwiftUI
 
 final class AppState: ObservableObject {
     @Published var selectedEngine: ASREngine {
         didSet {
             UserDefaults.standard.set(selectedEngine.rawValue, forKey: "selectedEngine")
             asrService.switchEngine(to: selectedEngine)
-            if (selectedEngine.requiresRuntime || textProcessingMode.usesLocalModel),
-               !runtimeReady {
-                status = "Для \(selectedEngine.shortTitle) обновите локальные модели."
+            if let component = selectedEngine.runtimeComponent,
+               !installedComponents.contains(component) {
+                selectedInstallComponents.insert(component)
+                status = "Для \(selectedEngine.shortTitle) установите модель \(component.title)."
             } else {
                 status = "Выбрана \(selectedEngine.shortTitle). Модель подготовится при первой записи."
             }
@@ -30,8 +32,10 @@ final class AppState: ObservableObject {
             if !textProcessingMode.usesLocalModel {
                 textProcessingService.shutdown()
             }
-            if textProcessingMode.usesLocalModel, !runtimeReady {
-                status = "Для режима «\(textProcessingMode.title)» обновите локальные модели."
+            if let component = textProcessingMode.runtimeComponent,
+               !installedComponents.contains(component) {
+                selectedInstallComponents.insert(component)
+                status = "Для режима «\(textProcessingMode.title)» установите локальный редактор."
             } else {
                 status = textProcessingMode.usesLocalModel
                     ? "Выбран режим «\(textProcessingMode.title)». Редактор подготовится после распознавания."
@@ -54,9 +58,18 @@ final class AppState: ObservableObject {
     @Published private(set) var lastRating: String?
     @Published private(set) var permissionsVersion = 0
     @Published private(set) var runtimeReady = RuntimePaths.isRuntimeReady
+    @Published private(set) var installedComponents = RuntimePaths.installedComponents
     @Published private(set) var isInstallingRuntime = false
     @Published private(set) var runtimeInstallStatus = ""
     @Published private(set) var runtimeInstallError: String?
+    @Published var selectedInstallPreset: RuntimeInstallPreset = .russian {
+        didSet {
+            selectedInstallComponents = selectedInstallPreset.components
+        }
+    }
+    @Published var selectedInstallComponents: Set<RuntimeComponent> = [.gigaam]
+    @Published private(set) var onboardingStep: OnboardingStep = .welcome
+    @Published private(set) var onboardingCompleted = false
 
     let hudModel: HUDModel
 
@@ -70,6 +83,7 @@ final class AppState: ObservableObject {
     private var targetPID: pid_t?
     private var recordingSource = "button"
     private var lastResult: TranscriptionResult?
+    private var uiTestWindow: NSWindow?
 
     init() {
         let savedEngine = UserDefaults.standard.string(forKey: "selectedEngine")
@@ -92,6 +106,19 @@ final class AppState: ObservableObject {
         let hudModel = HUDModel()
         self.hudModel = hudModel
 
+        if ProcessInfo.processInfo.environment["VOICESWITCH_FORCE_ONBOARDING"] == "1" {
+            onboardingCompleted = false
+        } else if UserDefaults.standard.object(forKey: "onboardingCompleted") == nil {
+            onboardingCompleted = RuntimePaths.isRuntimeReady
+        } else {
+            onboardingCompleted = UserDefaults.standard.bool(forKey: "onboardingCompleted")
+        }
+
+        installedComponents = RuntimePaths.installedComponents
+        if installedComponents.isEmpty {
+            selectedInstallComponents = [.gigaam]
+        }
+
         hotKey.onPress = { [weak self] in
             self?.toggleRecording(source: "hotkey")
         }
@@ -111,10 +138,15 @@ final class AppState: ObservableObject {
             self.status = message
         }
 
-        if !runtimeReady,
-           selectedEngine.requiresRuntime || textProcessingMode.usesLocalModel {
-            status = "Установите локальные модели перед первой записью."
-            runtimeInstallStatus = "Потребуется около 12 ГБ свободного места."
+        if !selectedEngineReady {
+            status = "Установите выбранные локальные модели перед первой записью."
+            runtimeInstallStatus = "Рекомендуемый стартовый комплект занимает около 2,5 ГБ."
+        }
+
+        if ProcessInfo.processInfo.environment["VOICESWITCH_FORCE_ONBOARDING"] == "1" {
+            DispatchQueue.main.async { [weak self] in
+                self?.showUITestWindow()
+            }
         }
     }
 
@@ -144,8 +176,33 @@ final class AppState: ObservableObject {
     }
 
     var selectedEngineReady: Bool {
-        (!selectedEngine.requiresRuntime || runtimeReady)
-            && (!textProcessingMode.usesLocalModel || runtimeReady)
+        let engineReady = selectedEngine.runtimeComponent.map {
+            installedComponents.contains($0)
+        } ?? true
+        let editorReady = textProcessingMode.runtimeComponent.map {
+            installedComponents.contains($0)
+        } ?? true
+        return engineReady && editorReady
+    }
+
+    var missingComponentsForCurrentSelection: Set<RuntimeComponent> {
+        var required: Set<RuntimeComponent> = []
+        if let component = selectedEngine.runtimeComponent {
+            required.insert(component)
+        }
+        if let component = textProcessingMode.runtimeComponent {
+            required.insert(component)
+        }
+        return required.subtracting(installedComponents)
+    }
+
+    var shouldShowRuntimeSetup: Bool {
+        isInstallingRuntime || !missingComponentsForCurrentSelection.isEmpty
+    }
+
+    var microphoneAuthorized: Bool {
+        _ = permissionsVersion
+        return Permissions.microphoneAuthorized
     }
 
     var isBusy: Bool {
@@ -278,14 +335,24 @@ final class AppState: ObservableObject {
     }
 
     func installRuntime() {
-        guard !isInstallingRuntime, !runtimeReady else { return }
+        let requestedComponents = selectedInstallComponents.subtracting(installedComponents)
+        guard !isInstallingRuntime, !requestedComponents.isEmpty else {
+            if selectedInstallComponents.isSubset(of: installedComponents) {
+                runtimeInstallStatus = "Выбранные модели уже установлены."
+                if !onboardingCompleted, onboardingStep == .models {
+                    onboardingStep = .permissions
+                }
+            }
+            return
+        }
 
         isInstallingRuntime = true
         runtimeInstallError = nil
         runtimeInstallStatus = "Подготавливаю установку…"
-        status = "Установка локальных моделей…"
+        status = "Установка выбранных локальных моделей…"
 
         runtimeInstaller.install(
+            components: requestedComponents,
             status: { [weak self] message in
                 guard let self else { return }
                 self.runtimeInstallStatus = message
@@ -296,13 +363,18 @@ final class AppState: ObservableObject {
                 self.isInstallingRuntime = false
                 switch result {
                 case .success:
-                    self.runtimeReady = RuntimePaths.isRuntimeReady
+                    self.refreshRuntimeState()
                     self.runtimeInstallError = nil
-                    self.runtimeInstallStatus = "Распознавание и локальный редактор готовы к работе."
-                    self.status = "Готово к записи"
+                    self.runtimeInstallStatus = "Выбранные модели готовы к работе."
+                    self.status = self.selectedEngineReady
+                        ? "Готово к записи"
+                        : "Выберите установленную модель или добавьте недостающую."
                     self.hudController.showSuccess("Модели установлены")
+                    if !self.onboardingCompleted, self.onboardingStep == .models {
+                        self.onboardingStep = .permissions
+                    }
                 case .failure(let error):
-                    self.runtimeReady = RuntimePaths.isRuntimeReady
+                    self.refreshRuntimeState()
                     self.runtimeInstallError = error.localizedDescription
                     self.runtimeInstallStatus = error.localizedDescription
                     self.status = "Не удалось установить модели."
@@ -310,6 +382,42 @@ final class AppState: ObservableObject {
                 }
             }
         )
+    }
+
+    func selectInstallPreset(_ preset: RuntimeInstallPreset) {
+        selectedInstallPreset = preset
+    }
+
+    func toggleInstallComponent(_ component: RuntimeComponent) {
+        if selectedInstallComponents.contains(component) {
+            selectedInstallComponents.remove(component)
+        } else {
+            selectedInstallComponents.insert(component)
+        }
+    }
+
+    func beginOnboarding() {
+        onboardingStep = .models
+        selectedInstallPreset = .russian
+    }
+
+    func continueOnboardingFromPermissions() {
+        refreshPermissions()
+        onboardingStep = .ready
+    }
+
+    func completeOnboarding() {
+        onboardingCompleted = true
+        UserDefaults.standard.set(true, forKey: "onboardingCompleted")
+        status = selectedEngineReady
+            ? "Готово к записи"
+            : "Выберите установленную модель."
+    }
+
+    func requestMicrophonePermission() {
+        Permissions.requestMicrophone { [weak self] _ in
+            self?.refreshPermissions()
+        }
     }
 
     func cancelRuntimeInstallation() {
@@ -357,6 +465,11 @@ final class AppState: ObservableObject {
         permissionsVersion += 1
     }
 
+    func refreshRuntimeState() {
+        runtimeReady = RuntimePaths.isRuntimeReady
+        installedComponents = RuntimePaths.installedComponents
+    }
+
     func openLogFolder() {
         let folder = RuntimePaths.logFile.deletingLastPathComponent()
         try? FileManager.default.createDirectory(
@@ -372,6 +485,17 @@ final class AppState: ObservableObject {
         asrService.shutdown()
         textProcessingService.shutdown()
         NSApplication.shared.terminate(nil)
+    }
+
+    private func showUITestWindow() {
+        let controller = NSHostingController(rootView: ContentView(state: self))
+        let window = NSWindow(contentViewController: controller)
+        window.title = "VoiceSwitch — настройка"
+        window.styleMask = [.titled, .closable, .miniaturizable]
+        window.center()
+        window.makeKeyAndOrderFront(nil)
+        NSApplication.shared.activate(ignoringOtherApps: true)
+        uiTestWindow = window
     }
 
     private func process(
@@ -430,6 +554,13 @@ final class AppState: ObservableObject {
     ) {
         lastText = text
         targetPID = nil
+
+        ComparisonLogger.appendDelivery(
+            autoPaste: autoPaste,
+            accessibilityAuthorized: Permissions.accessibilityAuthorized,
+            pasteTarget: pasteTarget,
+            frontmostPID: NSWorkspace.shared.frontmostApplication?.processIdentifier
+        )
 
         if autoPaste {
             let pasted = TextInjector.paste(text, into: pasteTarget)

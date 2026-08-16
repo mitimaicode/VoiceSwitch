@@ -117,6 +117,12 @@ final class ASRService {
                 "Apple SpeechAnalyzer не использует Python worker."
             )
         }
+        if let component = engine.runtimeComponent,
+           !RuntimePaths.isInstalled(component) {
+            throw VoiceSwitchError.runtimeMissing(
+                "Модель \(component.title) ещё не установлена. Выберите её в меню VoiceSwitch."
+            )
+        }
         if let process, process.isRunning, currentEngine == engine {
             return
         }

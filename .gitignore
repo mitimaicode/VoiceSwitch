@@ -5,6 +5,7 @@
 dist/
 Runtime/
 outputs/
+backups/
 *.xcuserstate
 *.wav
 *.jsonl

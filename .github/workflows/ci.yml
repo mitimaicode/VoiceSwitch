@@ -25,7 +25,8 @@ jobs:
             Resources/install_runtime.sh \
             "$RUNNER_TEMP/VoiceSwitch-Runtime" \
             worker/asr_worker.py \
-            worker/text_worker.py
+            worker/text_worker.py \
+            gigaam
 
       - name: Validate installer retry diagnostics
         run: |

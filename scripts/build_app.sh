@@ -85,6 +85,13 @@ if [[ "${VOICESWITCH_INCLUDE_RUNTIME:-0}" == "1" && -d "${PROJECT_ROOT}/Runtime"
   cp -cR "${PROJECT_ROOT}/Runtime/." "${OUTPUT_ROOT}/Runtime/"
 fi
 
-codesign --force --deep --sign - "${APP_ROOT}"
+SIGNING_IDENTITY="${VOICESWITCH_CODESIGN_IDENTITY:--}"
+if [[ -z "${VOICESWITCH_CODESIGN_IDENTITY:-}" ]] &&
+   security find-identity -v -p codesigning 2>/dev/null |
+     /usr/bin/grep -Fq '"VoiceSwitch Local Signing"'; then
+  SIGNING_IDENTITY="VoiceSwitch Local Signing"
+fi
+
+codesign --force --deep --sign "${SIGNING_IDENTITY}" "${APP_ROOT}"
 
 print "Собрано: ${APP_ROOT}"

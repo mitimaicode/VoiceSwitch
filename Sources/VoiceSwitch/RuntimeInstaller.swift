@@ -23,12 +23,23 @@ final class RuntimeInstaller {
     }
 
     func install(
+        components: Set<RuntimeComponent>,
         status: @escaping StatusHandler,
         completion: @escaping Completion
     ) {
         queue.async { [weak self] in
             guard let self else { return }
             guard self.process?.isRunning != true else { return }
+            guard !components.isEmpty else {
+                DispatchQueue.main.async {
+                    completion(.failure(
+                        VoiceSwitchError.runtimeMissing(
+                            "Выберите хотя бы одну локальную модель."
+                        )
+                    ))
+                }
+                return
+            }
 
             self.outputBuffer.removeAll()
             self.reportedFailure = nil
@@ -54,7 +65,11 @@ final class RuntimeInstaller {
                     installer.path,
                     RuntimePaths.runtimeRoot.path,
                     RuntimePaths.workerScript.path,
-                    RuntimePaths.textWorkerScript.path
+                    RuntimePaths.textWorkerScript.path,
+                    components
+                        .map(\.rawValue)
+                        .sorted()
+                        .joined(separator: ",")
                 ]
                 newProcess.standardOutput = newOutput
                 newProcess.standardError = newOutput
@@ -90,8 +105,12 @@ final class RuntimeInstaller {
                         )
 
                         DispatchQueue.main.async {
+                            let allRequestedComponentsReady = components.allSatisfy {
+                                RuntimePaths.isInstalled($0)
+                            }
                             if terminated.terminationStatus == 0,
-                               RuntimePaths.isRuntimeReady {
+                               RuntimePaths.isRuntimeReady,
+                               allRequestedComponentsReady {
                                 completion(.success(()))
                             } else {
                                 completion(.failure(
