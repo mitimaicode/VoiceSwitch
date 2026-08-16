@@ -4,6 +4,7 @@ set -euo pipefail
 RUNTIME_ROOT=${1:?Usage: install_runtime.sh RUNTIME_ROOT ASR_WORKER TEXT_WORKER}
 ASR_WORKER=${2:?Usage: install_runtime.sh RUNTIME_ROOT ASR_WORKER TEXT_WORKER}
 TEXT_WORKER=${3:?Usage: install_runtime.sh RUNTIME_ROOT ASR_WORKER TEXT_WORKER}
+COMPONENTS_CSV=${4:-gigaam,whisper,qwen,text}
 TOOLS_ROOT="${RUNTIME_ROOT}/Tools"
 UV_ROOT="${TOOLS_ROOT}/uv"
 UV_EXECUTABLE="${UV_ROOT}/uv"
@@ -13,6 +14,7 @@ MODEL_ROOT="${RUNTIME_ROOT}/Models"
 BIN_ROOT="${RUNTIME_ROOT}/bin"
 UV_CACHE="${RUNTIME_ROOT}/uv-cache"
 LOG_FILE="${RUNTIME_ROOT}/install.log"
+COMPONENT_MARKERS_ROOT="${RUNTIME_ROOT}/components"
 
 UV_VERSION="0.11.32"
 GIGAAM_COMMIT="559d88d6b72541412743929f633a6ae7c9950b85"
@@ -21,6 +23,38 @@ GIGAAM_ARCHIVE="https://github.com/salute-developers/GigaAM/archive/${GIGAAM_COM
 STATUS_MARKER="__VOICESWITCH_SETUP__"
 ERROR_MARKER="__VOICESWITCH_SETUP_ERROR__"
 RETRY_DELAY_SECONDS="${VOICESWITCH_RETRY_DELAY_SECONDS:-2}"
+REQUESTED_COMPONENTS=("${(@s:,:)COMPONENTS_CSV}")
+
+component_requested() {
+  local candidate=$1
+  local component
+  for component in "${REQUESTED_COMPONENTS[@]}"; do
+    [[ "${component}" == "${candidate}" ]] && return 0
+  done
+  return 1
+}
+
+mark_component() {
+  local component=$1
+  mkdir -p "${COMPONENT_MARKERS_ROOT}"
+  print -r -- "installed_at=$(date -u '+%Y-%m-%dT%H:%M:%SZ')" \
+    > "${COMPONENT_MARKERS_ROOT}/${component}.ready"
+}
+
+write_install_marker() {
+  local temporary_marker="${RUNTIME_ROOT}/install-complete.txt.tmp"
+  {
+    print -r -- "runtime_version=4"
+    print -r -- "selective_install=1"
+    print -r -- "uv_version=${UV_VERSION}"
+    print -r -- "gigaam_commit=${GIGAAM_COMMIT}"
+    local marker
+    for marker in "${COMPONENT_MARKERS_ROOT}"/*.ready(N); do
+      print -r -- "component=${marker:t:r}"
+    done
+  } > "${temporary_marker}"
+  mv "${temporary_marker}" "${RUNTIME_ROOT}/install-complete.txt"
+}
 
 status() {
   print -r -- "${STATUS_MARKER}$1"
@@ -96,8 +130,16 @@ download_with_resume() {
 [[ -f "${TEXT_WORKER}" ]] || fail "Не найден модуль локального редактора."
 command -v curl >/dev/null 2>&1 || fail "В macOS не найден curl."
 
+for component in "${REQUESTED_COMPONENTS[@]}"; do
+  case "${component}" in
+    gigaam|whisper|qwen|text) ;;
+    *) fail "Неизвестный компонент установки: ${component}" ;;
+  esac
+done
+(( ${#REQUESTED_COMPONENTS[@]} > 0 )) || fail "Не выбраны модели для установки."
+
 if [[ "${VOICESWITCH_SETUP_VALIDATE_ONLY:-0}" == "1" ]]; then
-  status "Проверка установщика завершена."
+  status "Проверка установщика завершена: ${COMPONENTS_CSV}."
   exit 0
 fi
 
@@ -111,7 +153,8 @@ mkdir -p \
   "${PYTHON_ROOT}" \
   "${MODEL_ROOT}" \
   "${BIN_ROOT}" \
-  "${UV_CACHE}"
+  "${UV_CACHE}" \
+  "${COMPONENT_MARKERS_ROOT}"
 
 exec > >(/usr/bin/tee -a "${LOG_FILE}") 2>&1
 print -r -- "=== Запуск установки $(date -u '+%Y-%m-%dT%H:%M:%SZ') ==="
@@ -120,6 +163,18 @@ if (( RESUMING == 1 )); then
   status "Продолжаю установку: готовые компоненты и недокачанные файлы будут использованы повторно."
 else
   status "Начинаю установку локальных моделей."
+fi
+
+# Все установки Runtime v4 до появления выборочных компонентов были полными.
+# Создаём маркеры миграции до перезаписи общего файла состояния.
+if [[ -f "${RUNTIME_ROOT}/install-complete.txt" ]] && \
+   grep -q '^runtime_version=4$' "${RUNTIME_ROOT}/install-complete.txt" && \
+   ! grep -q '^selective_install=1$' "${RUNTIME_ROOT}/install-complete.txt"; then
+  for component in gigaam whisper qwen text; do
+    [[ -f "${COMPONENT_MARKERS_ROOT}/${component}.ready" ]] || \
+      print -r -- "migrated_from=runtime-v4" \
+        > "${COMPONENT_MARKERS_ROOT}/${component}.ready"
+  done
 fi
 
 export UV_NO_MODIFY_PATH=1
@@ -173,24 +228,13 @@ PYTHON="${VENV_ROOT}/bin/python3"
 [[ -x "${PYTHON}" ]] || fail "Не удалось создать Python-окружение."
 
 run_with_retries \
-  "Устанавливаю локальные движки распознавания…" \
+  "Устанавливаю базовое локальное окружение…" \
   3 \
   "${UV_EXECUTABLE}" pip install \
     --python "${PYTHON}" \
     "numpy<3" \
     huggingface_hub \
-    imageio-ffmpeg \
-    "mlx-lm==0.31.3" \
-    mlx-whisper \
-    "mlx-qwen3-asr==0.3.5" \
-    torchaudio \
-    "${GIGAAM_ARCHIVE}" || fail_step "Устанавливаю локальные движки распознавания"
-
-status "Проверяю зависимости GigaAM…"
-if ! "${PYTHON}" -c 'import torch, torchaudio, gigaam'; then
-  fail \
-    "Не удалось загрузить зависимости GigaAM (torch/torchaudio). Нажмите «Продолжить установку», чтобы восстановить окружение. Журнал: ${LOG_FILE}"
-fi
+    imageio-ffmpeg || fail_step "Устанавливаю базовое локальное окружение"
 
 if ! FFMPEG_EXECUTABLE=$(
   "${PYTHON}" -c 'import imageio_ffmpeg; print(imageio_ffmpeg.get_ffmpeg_exe())'
@@ -200,42 +244,85 @@ fi
 ln -sf "${FFMPEG_EXECUTABLE}" "${BIN_ROOT}/ffmpeg" || \
   fail_step "Настраиваю ffmpeg"
 
-run_with_retries \
-  "Загружаю Whisper Large V3 Turbo…" \
-  3 \
-  "${PYTHON}" "${ASR_WORKER}" \
-    --download \
-    --engine whisper \
-    --cache "${MODEL_ROOT}" || fail_step "Загружаю Whisper Large V3 Turbo"
+if component_requested gigaam; then
+  run_with_retries \
+    "Устанавливаю движок GigaAM…" \
+    3 \
+    "${UV_EXECUTABLE}" pip install \
+      --python "${PYTHON}" \
+      torchaudio \
+      "${GIGAAM_ARCHIVE}" || fail_step "Устанавливаю движок GigaAM"
 
-run_with_retries \
-  "Загружаю GigaAM v3 E2E RNNT…" \
-  3 \
-  "${PYTHON}" "${ASR_WORKER}" \
-    --download \
-    --engine gigaam \
-    --cache "${MODEL_ROOT}" || fail_step "Загружаю GigaAM v3 E2E RNNT"
+  status "Проверяю зависимости GigaAM…"
+  if ! "${PYTHON}" -c 'import torch, torchaudio, gigaam'; then
+    fail \
+      "Не удалось загрузить зависимости GigaAM (torch/torchaudio). Нажмите «Продолжить установку», чтобы восстановить окружение. Журнал: ${LOG_FILE}"
+  fi
 
-run_with_retries \
-  "Загружаю Qwen3-ASR 1.7B…" \
-  3 \
-  "${PYTHON}" "${ASR_WORKER}" \
-    --download \
-    --engine qwen \
-    --cache "${MODEL_ROOT}" || fail_step "Загружаю Qwen3-ASR 1.7B"
+  run_with_retries \
+    "Загружаю GigaAM v3 E2E RNNT…" \
+    3 \
+    "${PYTHON}" "${ASR_WORKER}" \
+      --download \
+      --engine gigaam \
+      --cache "${MODEL_ROOT}" || fail_step "Загружаю GigaAM v3 E2E RNNT"
+  mark_component gigaam
+fi
 
-run_with_retries \
-  "Загружаю локальный редактор Qwen3-4B…" \
-  3 \
-  "${PYTHON}" "${TEXT_WORKER}" \
-    --download \
-    --cache "${MODEL_ROOT}" || fail_step "Загружаю локальный редактор Qwen3-4B"
+if component_requested whisper; then
+  run_with_retries \
+    "Устанавливаю движок Whisper…" \
+    3 \
+    "${UV_EXECUTABLE}" pip install \
+      --python "${PYTHON}" \
+      mlx-whisper || fail_step "Устанавливаю движок Whisper"
 
-print -r -- "runtime_version=4" > "${RUNTIME_ROOT}/install-complete.txt"
-print -r -- "uv_version=${UV_VERSION}" >> "${RUNTIME_ROOT}/install-complete.txt"
-print -r -- "gigaam_commit=${GIGAAM_COMMIT}" >> "${RUNTIME_ROOT}/install-complete.txt"
-print -r -- "qwen_model=Qwen/Qwen3-ASR-1.7B" >> "${RUNTIME_ROOT}/install-complete.txt"
-print -r -- "text_model=Qwen/Qwen3-4B-MLX-4bit" >> "${RUNTIME_ROOT}/install-complete.txt"
+  run_with_retries \
+    "Загружаю Whisper Large V3 Turbo…" \
+    3 \
+    "${PYTHON}" "${ASR_WORKER}" \
+      --download \
+      --engine whisper \
+      --cache "${MODEL_ROOT}" || fail_step "Загружаю Whisper Large V3 Turbo"
+  mark_component whisper
+fi
 
-status "Готово — распознавание и локальный редактор установлены."
+if component_requested qwen; then
+  run_with_retries \
+    "Устанавливаю движок Qwen3-ASR…" \
+    3 \
+    "${UV_EXECUTABLE}" pip install \
+      --python "${PYTHON}" \
+      "mlx-qwen3-asr==0.3.5" || fail_step "Устанавливаю движок Qwen3-ASR"
+
+  run_with_retries \
+    "Загружаю Qwen3-ASR 1.7B…" \
+    3 \
+    "${PYTHON}" "${ASR_WORKER}" \
+      --download \
+      --engine qwen \
+      --cache "${MODEL_ROOT}" || fail_step "Загружаю Qwen3-ASR 1.7B"
+  mark_component qwen
+fi
+
+if component_requested text; then
+  run_with_retries \
+    "Устанавливаю локальный редактор…" \
+    3 \
+    "${UV_EXECUTABLE}" pip install \
+      --python "${PYTHON}" \
+      "mlx-lm==0.31.3" || fail_step "Устанавливаю локальный редактор"
+
+  run_with_retries \
+    "Загружаю локальный редактор Qwen3-4B…" \
+    3 \
+    "${PYTHON}" "${TEXT_WORKER}" \
+      --download \
+      --cache "${MODEL_ROOT}" || fail_step "Загружаю локальный редактор Qwen3-4B"
+  mark_component text
+fi
+
+write_install_marker
+
+status "Готово — выбранные локальные модели установлены."
 print -r -- "=== Установка успешно завершена $(date -u '+%Y-%m-%dT%H:%M:%SZ') ==="

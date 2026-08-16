@@ -28,6 +28,8 @@ jobs:
           notes_file="RELEASE_NOTES_${GITHUB_REF_NAME}.md"
           args=(
             "$GITHUB_REF_NAME"
+            dist/VoiceSwitch-*.dmg
+            dist/VoiceSwitch-*.dmg.sha256
             dist/VoiceSwitch-*.zip
             dist/VoiceSwitch-*.zip.sha256
             --title "VoiceSwitch ${GITHUB_REF_NAME}"

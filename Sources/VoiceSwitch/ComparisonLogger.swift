@@ -90,6 +90,48 @@ enum ComparisonLogger {
         appendRaw(record)
     }
 
+    static func appendInjection(
+        targetPID: pid_t?,
+        targetName: String,
+        frontmostPID: pid_t?,
+        method: String,
+        result: String,
+        focusedRole: String,
+        errorCode: Int32
+    ) {
+        let formatter = ISO8601DateFormatter()
+        let record: [String: Any] = [
+            "timestamp": formatter.string(from: Date()),
+            "type": "text_injection",
+            "target_pid": targetPID ?? 0,
+            "target_name": targetName,
+            "frontmost_pid": frontmostPID ?? 0,
+            "method": method,
+            "result": result,
+            "focused_role": focusedRole,
+            "ax_error_code": errorCode
+        ]
+        appendRaw(record)
+    }
+
+    static func appendDelivery(
+        autoPaste: Bool,
+        accessibilityAuthorized: Bool,
+        pasteTarget: pid_t?,
+        frontmostPID: pid_t?
+    ) {
+        let formatter = ISO8601DateFormatter()
+        let record: [String: Any] = [
+            "timestamp": formatter.string(from: Date()),
+            "type": "text_delivery",
+            "auto_paste": autoPaste,
+            "accessibility_authorized": accessibilityAuthorized,
+            "paste_target_pid": Int(pasteTarget ?? 0),
+            "frontmost_pid": Int(frontmostPID ?? 0)
+        ]
+        appendRaw(record)
+    }
+
     private static func appendRaw(_ record: [String: Any]) {
         let url = RuntimePaths.logFile
         let directory = url.deletingLastPathComponent()
