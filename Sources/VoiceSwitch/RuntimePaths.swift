@@ -80,6 +80,28 @@ enum RuntimePaths {
         return applicationSupportRoot.appendingPathComponent("text_worker.py")
     }
 
+    static var mediaWorkerScript: URL {
+        if let custom = ProcessInfo.processInfo.environment["VOICESWITCH_MEDIA_WORKER"] {
+            return URL(fileURLWithPath: custom)
+        }
+
+        if let bundled = Bundle.main.url(forResource: "media_worker", withExtension: "py") {
+            return bundled
+        }
+
+        return applicationSupportRoot.appendingPathComponent("media_worker.py")
+    }
+
+    static var ffmpegExecutable: URL {
+        runtimeRoot
+            .appendingPathComponent("bin", isDirectory: true)
+            .appendingPathComponent("ffmpeg")
+    }
+
+    static var transcriptsRoot: URL {
+        applicationSupportRoot.appendingPathComponent("Transcripts", isDirectory: true)
+    }
+
     static var installerScript: URL? {
         Bundle.main.url(forResource: "install_runtime", withExtension: "sh")
     }

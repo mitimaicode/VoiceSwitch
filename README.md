@@ -4,7 +4,7 @@
   <img src="assets/banner.svg" alt="VoiceSwitch — локальная диктовка для macOS" width="100%">
 </p>
 
-> Локальная диктовка и редактура текста для macOS.
+> Локальная диктовка и расшифровка аудио/видео для macOS.
 
 [![CI](https://github.com/mitimaicode/VoiceSwitch/actions/workflows/ci.yml/badge.svg)](https://github.com/mitimaicode/VoiceSwitch/actions/workflows/ci.yml)
 [![Latest release](https://img.shields.io/github/v/release/mitimaicode/VoiceSwitch?include_prereleases)](https://github.com/mitimaicode/VoiceSwitch/releases)
@@ -12,7 +12,9 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
 VoiceSwitch записывает речь по глобальной горячей клавише, распознаёт её
-полностью локально и вставляет текст в активное приложение.
+полностью локально и вставляет текст в активное приложение. Отдельный режим
+«Файл» расшифровывает аудиодорожку локального аудио или видео, умеет продолжить
+прерванную задачу и сохраняет TXT, SRT, VTT и JSON.
 
 <p align="center">
   <a href="assets/voiceswitch-demo.mp4">
@@ -31,6 +33,8 @@ VoiceSwitch записывает речь по глобальной горяче
 - **Qwen3-4B (MLX)** — локально исправляет или сокращает расшифровку;
 - режимы текста **Дословно**, **Исправить** и **Кратко**;
 - `fn + ⌥ Option` — начать или остановить запись;
+- локальный импорт аудио и видео с прогрессом, отменой и продолжением;
+- экспорт TXT, SRT, VTT и JSON; временные метки субтитров — по минутным блокам;
 - HUD показывает запись, расшифровку, локальную редактуру и результат;
 - аудио и текст не отправляются во внешние API;
 - журнал сравнения помогает выбрать модель под собственную речь.
@@ -88,6 +92,8 @@ VoiceSwitch записывает речь по глобальной горяче
 
 ## Использование
 
+### Диктовка
+
 1. Выберите GigaAM, Whisper, Qwen или Apple в меню VoiceSwitch.
 2. Выберите режим текста: **Дословно**, **Исправить** или **Кратко**.
 3. Нажмите `fn + ⌥ Option`, чтобы начать запись.
@@ -105,6 +111,25 @@ VoiceSwitch записывает речь по глобальной горяче
 повторы и ошибки пунктуации. Режим **Кратко** превращает расшифровку в
 компактное сообщение для переписки. Если редактор вернёт ошибку, VoiceSwitch
 автоматически вставит исходную расшифровку.
+
+### Аудио и видеофайлы
+
+1. Переключите источник с **Диктовка** на **Файл**.
+2. Выберите GigaAM, Whisper или Qwen и нажмите **Выбрать аудио или видео…**.
+3. Дождитесь завершения либо остановите задачу. При повторном выборе того же
+   неизменённого файла VoiceSwitch продолжит с сохранённого блока.
+4. Нажмите **Показать файлы**, чтобы открыть TXT, SRT, VTT и JSON, или
+   **Скопировать текст**.
+
+VoiceSwitch извлекает и распознаёт только звуковую дорожку: кадры видео не
+анализируются. Длинный материал делится на блоки по 60 секунд с перекрытием
+1,5 секунды; повторяющиеся слова на стыках удаляются. Поэтому метки SRT/VTT
+показывают примерные границы блоков, а не точное время каждого слова.
+
+Файловый режим пока не использует Apple SpeechAnalyzer и не применяет режимы
+«Исправить»/«Кратко»: изменение длинного текста нарушило бы соответствие
+субтитрам. Обработка выполняется последовательно, чтобы не держать две копии
+тяжёлой модели в памяти.
 
 Модель загружается лениво. Если выбранный движок ещё не установлен,
 VoiceSwitch покажет его размер и предложит загрузить только этот компонент.
@@ -124,6 +149,12 @@ Runtime и веса моделей:
 
 ```text
 ~/Library/Application Support/VoiceSwitch/comparison.jsonl
+```
+
+Расшифровки импортированных файлов:
+
+```text
+~/Library/Application Support/VoiceSwitch/Transcripts
 ```
 
 В журнале сохраняются модель, длительность записи, время распознавания, RTF,
@@ -187,7 +218,7 @@ chmod +x scripts/*.sh Resources/install_runtime.sh
 Создание компактного release-архива без весов моделей:
 
 ```zsh
-./scripts/package_release.sh 0.3.3-beta
+./scripts/package_release.sh 0.4.0-beta
 ```
 
 Публичный release-скрипт по умолчанию использует ad-hoc подпись. Для стабильной
@@ -229,11 +260,13 @@ VoiceSwitch не связан с авторами перечисленных п�
 <details>
 <summary>English summary</summary>
 
-VoiceSwitch is a local macOS dictation menu-bar app for Apple Silicon. It
-switches between GigaAM, Whisper Large V3 Turbo, Qwen3-ASR 1.7B, and Apple
-SpeechAnalyzer. A local Qwen3-4B model can clean up or shorten the transcript.
-Press `fn + Option` to start or stop recording. Audio and transcripts stay on
-the Mac. Apple SpeechAnalyzer requires macOS 26 or newer.
+VoiceSwitch is a local macOS dictation and media-transcription menu-bar app for
+Apple Silicon. It switches between GigaAM, Whisper Large V3 Turbo, Qwen3-ASR
+1.7B, and Apple SpeechAnalyzer. Press `fn + Option` to dictate, or import a
+local audio/video file and export TXT, SRT, VTT, and JSON. Video import
+transcribes the audio track only; subtitle timestamps are coarse chunk
+boundaries. Audio and transcripts stay on the Mac. Apple SpeechAnalyzer
+requires macOS 26 or newer and is currently limited to dictation mode.
 See [INSTALL.md](INSTALL.md) for installation details and use GitHub Issues or
 Discussions for feedback.
 
