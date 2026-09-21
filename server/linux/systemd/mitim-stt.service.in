@@ -1,0 +1,19 @@
+[Unit]
+Description=VoiceSwitch resident local speech recognition
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=@STT_ROOT@
+ExecStart=@STT_ROOT@/venv/bin/python @STT_ROOT@/server.py --cache @CACHE_ROOT@ --work @STT_ROOT@/work --host 127.0.0.1 --port 18790
+Restart=on-failure
+RestartSec=5
+TimeoutStartSec=900
+Environment=CUDA_VISIBLE_DEVICES=0
+Environment=PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
+Environment=HF_HOME=@CACHE_ROOT@/huggingface
+Environment=TORCH_HOME=@CACHE_ROOT@/torch
+
+[Install]
+WantedBy=default.target

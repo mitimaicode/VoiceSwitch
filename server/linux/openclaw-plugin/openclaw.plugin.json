@@ -1,0 +1,38 @@
+{
+  "id": "video-transcription-taskflow",
+  "name": "Video Transcription TaskFlow",
+  "description": "Managed background orchestration for the local GigaAM-first video pipeline.",
+  "version": "0.1.6",
+  "configSchema": {
+    "type": "object",
+    "properties": {
+      "outputRoot": {
+        "type": "string"
+      },
+      "pipelinePath": {
+        "type": "string"
+      },
+      "pythonPath": {
+        "type": "string"
+      },
+      "ffmpegPath": {
+        "type": "string"
+      },
+      "ffprobePath": {
+        "type": "string"
+      }
+    },
+    "additionalProperties": false
+  },
+  "activation": {
+    "onStartup": true
+  },
+  "contracts": {
+    "tools": [
+      "video_transcription_start",
+      "video_transcription_resume",
+      "video_transcription_status",
+      "video_transcription_cancel"
+    ]
+  }
+}

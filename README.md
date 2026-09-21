@@ -1,20 +1,28 @@
 # VoiceSwitch
 
 <p align="center">
-  <img src="assets/banner.svg" alt="VoiceSwitch — локальная диктовка для macOS" width="100%">
+  <img src="assets/banner.svg" alt="VoiceSwitch — локальное распознавание речи" width="100%">
 </p>
 
-> Локальная диктовка и расшифровка аудио/видео для macOS.
+> Локальная диктовка и расшифровка аудио/видео для macOS и Linux-сервера.
 
 [![CI](https://github.com/mitimaicode/VoiceSwitch/actions/workflows/ci.yml/badge.svg)](https://github.com/mitimaicode/VoiceSwitch/actions/workflows/ci.yml)
 [![Latest release](https://img.shields.io/github/v/release/mitimaicode/VoiceSwitch?include_prereleases)](https://github.com/mitimaicode/VoiceSwitch/releases)
 [![Downloads](https://img.shields.io/github/downloads/mitimaicode/VoiceSwitch/total)](https://github.com/mitimaicode/VoiceSwitch/releases)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-VoiceSwitch записывает речь по глобальной горячей клавише, распознаёт её
-полностью локально и вставляет текст в активное приложение. Отдельный режим
-«Файл» расшифровывает аудиодорожку локального аудио или видео, умеет продолжить
-прерванную задачу и сохраняет TXT, SRT, VTT и JSON.
+В репозитории две редакции. Приложение для macOS записывает речь по глобальной
+горячей клавише, распознаёт её локально и вставляет текст в активное приложение.
+Linux Server Edition воспроизводит установленный серверный контур для короткой
+речи и длинных видео: resident STT, checkpoint/resume, точное выравнивание,
+диаризация, визуальный анализ и несколько форматов экспорта.
+
+| Редакция | Платформа | Пакет релиза |
+|---|---|---|
+| VoiceSwitch for Mac | Apple Silicon, macOS 14+ | `VoiceSwitch-…-macos-arm64.dmg` |
+| VoiceSwitch Server Edition | Linux x86_64, NVIDIA CUDA | `VoiceSwitch-Server-…-linux-x86_64.tar.gz` |
+
+## Приложение для macOS
 
 <p align="center">
   <a href="assets/voiceswitch-demo.mp4">
@@ -39,12 +47,38 @@ VoiceSwitch записывает речь по глобальной горяче
 - аудио и текст не отправляются во внешние API;
 - журнал сравнения помогает выбрать модель под собственную речь.
 
+## Linux Server Edition
+
+Серверный пакет — это не запуск DMG на Linux. Он содержит отдельный контур,
+снятый с реально работающей серверной установки:
+
+- GigaAM v3 E2E RNNT на CUDA и Whisper Turbo fallback;
+- loopback HTTP-сервис `127.0.0.1:18790` под user systemd;
+- длинные локальные файлы, Telegram media и YouTube;
+- профили `quick`, `standard`, `interview`, `multilingual` и `deep`;
+- Qwen3 ForcedAligner, pyannote diarization и локальный Ollama `qwen3-vl:8b`;
+- Markdown, JSON, SRT, VTT, QC, manifest и возобновляемые checkpoint;
+- необязательный OpenClaw TaskFlow plugin со start/resume/status/cancel.
+
+Краткая установка:
+
+```bash
+tar -xzf VoiceSwitch-Server-0.5.0-beta-linux-x86_64.tar.gz
+cd VoiceSwitch-Server-0.5.0-beta-linux-x86_64
+./install.sh
+python3 healthcheck.py
+```
+
+Подробности, требования и варианты установки находятся в
+[`server/linux/README.md`](server/linux/README.md) и [INSTALL.md](INSTALL.md).
+Порт `18790` намеренно доступен только локально; публиковать его в сеть нельзя.
+
 > [!IMPORTANT]
-> Это beta-релиз для Mac с Apple Silicon. Приложение пока подписано ad-hoc и
-> не нотарифицировано Apple. Подробно о различиях и плане выпуска:
+> Обе редакции пока beta. Приложение для Mac подписано ad-hoc и не
+> нотарифицировано Apple. Подробно о различиях и плане выпуска:
 > [подпись и нотарификация](docs/SIGNING_AND_NOTARIZATION.md).
 
-## Системные требования
+## Системные требования macOS
 
 - Mac с Apple Silicon (`M1` или новее);
 - macOS 14 Sonoma или новее;
@@ -52,7 +86,7 @@ VoiceSwitch записывает речь по глобальной горяче
 - около 2,5 ГБ для рекомендуемой установки с GigaAM или около 10 ГБ для всех моделей;
 - интернет только во время первоначальной установки моделей.
 
-## Установка
+## Установка macOS
 
 1. Откройте [GitHub Releases](https://github.com/mitimaicode/VoiceSwitch/releases),
    выберите самый новый релиз и скачайте `VoiceSwitch-…-macos-arm64.dmg`.
@@ -218,7 +252,8 @@ chmod +x scripts/*.sh Resources/install_runtime.sh
 Создание компактного release-архива без весов моделей:
 
 ```zsh
-./scripts/package_release.sh 0.4.0-beta
+./scripts/package_release.sh 0.5.0-beta
+./scripts/package_server_release.sh 0.5.0-beta
 ```
 
 Публичный release-скрипт по умолчанию использует ad-hoc подпись. Для стабильной
@@ -247,6 +282,10 @@ identity через `VOICESWITCH_CODESIGN_IDENTITY`.
 - [OpenAI Whisper](https://github.com/openai/whisper) — MIT;
 - [MLX Whisper](https://github.com/ml-explore/mlx-examples/tree/main/whisper);
 - [Qwen3-ASR](https://github.com/QwenLM/Qwen3-ASR) — Apache-2.0;
+- [Qwen3 ForcedAligner](https://huggingface.co/Qwen/Qwen3-ForcedAligner-0.6B) —
+  условия модели опубликованы её автором;
+- [pyannote.audio](https://github.com/pyannote/pyannote-audio) — MIT, отдельная
+  модель diarization требует принятия условий на Hugging Face;
 - [mlx-qwen3-asr](https://github.com/moona3k/mlx-qwen3-asr) — Apache-2.0;
 - [Qwen3-4B](https://huggingface.co/Qwen/Qwen3-4B-MLX-4bit) — Apache-2.0;
 - [MLX LM](https://github.com/ml-explore/mlx-lm) — MIT;
@@ -260,13 +299,13 @@ VoiceSwitch не связан с авторами перечисленных п�
 <details>
 <summary>English summary</summary>
 
-VoiceSwitch is a local macOS dictation and media-transcription menu-bar app for
-Apple Silicon. It switches between GigaAM, Whisper Large V3 Turbo, Qwen3-ASR
-1.7B, and Apple SpeechAnalyzer. Press `fn + Option` to dictate, or import a
-local audio/video file and export TXT, SRT, VTT, and JSON. Video import
-transcribes the audio track only; subtitle timestamps are coarse chunk
-boundaries. Audio and transcripts stay on the Mac. Apple SpeechAnalyzer
-requires macOS 26 or newer and is currently limited to dictation mode.
+VoiceSwitch provides a local macOS dictation app and a separate Linux Server
+Edition. The Mac app supports GigaAM, Whisper, Qwen3-ASR and Apple
+SpeechAnalyzer. The Linux package reproduces the project's NVIDIA/CUDA server
+stack for resident speech recognition and resumable long-video processing,
+including optional alignment, diarization, visual analysis and OpenClaw task
+orchestration. Media and transcripts stay on the machine unless a user
+explicitly uses the YouTube download or Telegram publication integrations.
 See [INSTALL.md](INSTALL.md) for installation details and use GitHub Issues or
 Discussions for feedback.
 
