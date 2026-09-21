@@ -139,7 +139,11 @@ if ((INSTALL_OPENCLAW)); then
   PLUGIN_ROOT="${HOME}/.openclaw/workspace/plugins/video-transcription-taskflow"
   mkdir -p "$PLUGIN_ROOT"
   cp -R "$SOURCE_ROOT/openclaw-plugin/." "$PLUGIN_ROOT/"
-  npm --prefix "$PLUGIN_ROOT" install --omit=dev --omit=peer --ignore-scripts
+  npm --prefix "$PLUGIN_ROOT" install \
+    --omit=dev \
+    --omit=peer \
+    --ignore-scripts \
+    --legacy-peer-deps
 fi
 
 systemctl --user daemon-reload

@@ -114,7 +114,7 @@ jobs:
       - name: Validate optional OpenClaw plugin
         working-directory: server/linux/openclaw-plugin
         run: |
-          npm ci --omit=dev --omit=peer --ignore-scripts
+          npm ci --omit=dev --omit=peer --ignore-scripts --legacy-peer-deps
           node --check index.js
           node --test \
             index.test.js \

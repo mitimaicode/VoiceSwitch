@@ -21,7 +21,7 @@ python3 -m py_compile worker/asr_worker.py worker/media_worker.py worker/text_wo
 python3 -m unittest discover -s tests -v
 bash -n server/linux/install.sh scripts/package_server_release.sh
 PYTHONPATH=server/linux/video python3 -m unittest discover -s server/linux/tests -v
-(cd server/linux/openclaw-plugin && npm ci --omit=dev --omit=peer --ignore-scripts && node --test index.test.js source-validation.test.js tool-result.test.js worker-scope.test.js)
+(cd server/linux/openclaw-plugin && npm ci --omit=dev --omit=peer --ignore-scripts --legacy-peer-deps && node --test index.test.js source-validation.test.js tool-result.test.js worker-scope.test.js)
 ```
 
 Для изменения распознавания желательно приложить обезличенный набор тестовых
