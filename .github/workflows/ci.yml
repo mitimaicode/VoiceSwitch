@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches: [main, "agent/**"]
   pull_request:
     branches: [main]
 
@@ -20,7 +20,8 @@ jobs:
       - name: Validate scripts
         run: |
           zsh -n scripts/*.sh Resources/install_runtime.sh
-          python3 -m py_compile worker/asr_worker.py worker/text_worker.py scripts/collect_github_stats.py
+          python3 -m py_compile worker/asr_worker.py worker/media_worker.py worker/text_worker.py scripts/collect_github_stats.py
+          python3 -m unittest discover -s tests -v
           VOICESWITCH_SETUP_VALIDATE_ONLY=1 \
             Resources/install_runtime.sh \
             "$RUNNER_TEMP/VoiceSwitch-Runtime" \
@@ -47,6 +48,17 @@ jobs:
           printf '%s\n' "$output" | grep -q '__VOICESWITCH_SETUP_ERROR__'
           grep -q 'Устанавливаю изолированный Python 3.12' "$runtime_root/install.log"
 
+      - name: Validate clean GigaAM dependency install
+        run: |
+          VOICESWITCH_SETUP_DEPENDENCIES_ONLY=1 \
+          VOICESWITCH_RETRY_DELAY_SECONDS=0 \
+            Resources/install_runtime.sh \
+            "$RUNNER_TEMP/VoiceSwitch-GigaAM-Dependencies" \
+            worker/asr_worker.py \
+            worker/text_worker.py \
+            gigaam
+          test ! -f "$RUNNER_TEMP/VoiceSwitch-GigaAM-Dependencies/install-complete.txt"
+
       - name: Build VoiceSwitch
         run: swift build -c release
 
@@ -56,3 +68,25 @@ jobs:
           ./scripts/build_app.sh "$RUNNER_TEMP/VoiceSwitch"
           codesign --verify --deep --strict "$RUNNER_TEMP/VoiceSwitch/VoiceSwitch.app"
           plutil -lint "$RUNNER_TEMP/VoiceSwitch/VoiceSwitch.app/Contents/Info.plist"
+          test -f "$RUNNER_TEMP/VoiceSwitch/VoiceSwitch.app/Contents/Resources/media_worker.py"
+
+      - name: Package pull request test build
+        if: github.event_name == 'pull_request'
+        run: |
+          ditto -c -k --sequesterRsrc --keepParent \
+            "$RUNNER_TEMP/VoiceSwitch/VoiceSwitch.app" \
+            "$RUNNER_TEMP/VoiceSwitch-v0.4.0-beta-test.zip"
+          cd "$RUNNER_TEMP"
+          shasum -a 256 VoiceSwitch-v0.4.0-beta-test.zip \
+            > VoiceSwitch-v0.4.0-beta-test.zip.sha256
+
+      - name: Upload pull request test build
+        if: github.event_name == 'pull_request'
+        uses: actions/upload-artifact@v7
+        with:
+          name: VoiceSwitch-v0.4.0-beta-macos-arm64-test
+          path: |
+            ${{ runner.temp }}/VoiceSwitch-v0.4.0-beta-test.zip
+            ${{ runner.temp }}/VoiceSwitch-v0.4.0-beta-test.zip.sha256
+          if-no-files-found: error
+          retention-days: 7

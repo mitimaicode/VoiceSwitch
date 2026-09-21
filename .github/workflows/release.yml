@@ -16,10 +16,30 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v7
 
+      - name: Validate release source
+        run: |
+          zsh -n scripts/*.sh Resources/install_runtime.sh
+          python3 -m py_compile worker/asr_worker.py worker/media_worker.py worker/text_worker.py
+          python3 -m unittest discover -s tests -v
+          bundle_version=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' Resources/Info.plist)
+          tag_version="${GITHUB_REF_NAME#v}"
+          test "$bundle_version" = "${tag_version%%-*}"
+
+      - name: Validate clean GigaAM dependency install
+        run: |
+          VOICESWITCH_SETUP_DEPENDENCIES_ONLY=1 \
+          VOICESWITCH_RETRY_DELAY_SECONDS=0 \
+            Resources/install_runtime.sh \
+            "$RUNNER_TEMP/VoiceSwitch-GigaAM-Dependencies" \
+            worker/asr_worker.py \
+            worker/text_worker.py \
+            gigaam
+
       - name: Build release archive
         run: |
           chmod +x scripts/*.sh Resources/install_runtime.sh
           ./scripts/package_release.sh "${GITHUB_REF_NAME#v}"
+          test -f "dist/VoiceSwitch-${GITHUB_REF_NAME#v}-macos-arm64/VoiceSwitch.app/Contents/Resources/media_worker.py"
 
       - name: Publish GitHub release
         env:

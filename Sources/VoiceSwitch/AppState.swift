@@ -1,10 +1,23 @@
 import AppKit
 import AVFoundation
 import Combine
+import CryptoKit
 import Foundation
 import SwiftUI
+import UniformTypeIdentifiers
 
 final class AppState: ObservableObject {
+    @Published var inputMode: InputMode {
+        didSet {
+            UserDefaults.standard.set(inputMode.rawValue, forKey: "inputMode")
+            if inputMode == .mediaFile, selectedEngine == .apple {
+                selectedEngine = .gigaam
+            }
+            status = inputMode == .mediaFile
+                ? "Выберите аудио или видео — распознаётся только звуковая дорожка."
+                : "Готово к записи"
+        }
+    }
     @Published var selectedEngine: ASREngine {
         didSet {
             UserDefaults.standard.set(selectedEngine.rawValue, forKey: "selectedEngine")
@@ -14,7 +27,9 @@ final class AppState: ObservableObject {
                 selectedInstallComponents.insert(component)
                 status = "Для \(selectedEngine.shortTitle) установите модель \(component.title)."
             } else {
-                status = "Выбрана \(selectedEngine.shortTitle). Модель подготовится при первой записи."
+                status = inputMode == .mediaFile
+                    ? "Выбрана \(selectedEngine.shortTitle). Можно выбрать аудио или видео."
+                    : "Выбрана \(selectedEngine.shortTitle). Модель подготовится при первой записи."
             }
         }
     }
@@ -49,13 +64,19 @@ final class AppState: ObservableObject {
         }
     }
     @Published private(set) var isRecording = false
+    @Published private(set) var isChoosingMediaFile = false
     @Published private(set) var isTranscribing = false
+    @Published private(set) var isTranscribingMedia = false
     @Published private(set) var isProcessingText = false
     @Published private(set) var status = "Готово к записи"
     @Published private(set) var lastText = ""
     @Published private(set) var lastMetrics = ""
     @Published private(set) var lastOutputMode: TextProcessingMode = .verbatim
     @Published private(set) var lastRating: String?
+    @Published private(set) var mediaProgress: Double?
+    @Published private(set) var mediaStatus = ""
+    @Published private(set) var mediaSourceName = ""
+    @Published private(set) var lastMediaOutputDirectory: URL?
     @Published private(set) var permissionsVersion = 0
     @Published private(set) var runtimeReady = RuntimePaths.isRuntimeReady
     @Published private(set) var installedComponents = RuntimePaths.installedComponents
@@ -76,6 +97,7 @@ final class AppState: ObservableObject {
     private let audioRecorder = AudioRecorder()
     private let hotKey = GlobalHotKey()
     private let asrService = ASRService()
+    private let mediaTranscriptionService = MediaTranscriptionService()
     private let textProcessingService = TextProcessingService()
     private let runtimeInstaller = RuntimeInstaller()
     private let appTracker = FrontmostApplicationTracker()
@@ -83,12 +105,22 @@ final class AppState: ObservableObject {
     private var targetPID: pid_t?
     private var recordingSource = "button"
     private var lastResult: TranscriptionResult?
+    private var lastMediaResult: MediaTranscriptionResult?
+    private var mediaSecurityScopedURL: URL?
     private var uiTestWindow: NSWindow?
 
     init() {
-        let savedEngine = UserDefaults.standard.string(forKey: "selectedEngine")
-            .flatMap(ASREngine.init(rawValue:))
-        selectedEngine = savedEngine ?? .gigaam
+        let resolvedInputMode = UserDefaults.standard.string(forKey: "inputMode")
+            .flatMap(InputMode.init(rawValue:))
+            ?? .dictation
+        let storedEngine = UserDefaults.standard.string(forKey: "selectedEngine")
+            .flatMap(ASREngine.init(rawValue:)) ?? .gigaam
+        let resolvedEngine: ASREngine =
+            resolvedInputMode == .mediaFile && storedEngine == .apple
+            ? .gigaam
+            : storedEngine
+        inputMode = resolvedInputMode
+        selectedEngine = resolvedEngine
         let savedTextMode = UserDefaults.standard.string(forKey: "textProcessingMode")
             .flatMap(TextProcessingMode.init(rawValue:))
         textProcessingMode = savedTextMode ?? .verbatim
@@ -128,10 +160,17 @@ final class AppState: ObservableObject {
             guard let self,
                   !self.isRecording,
                   !self.isTranscribing,
+                  !self.isTranscribingMedia,
                   !self.isProcessingText else {
                 return
             }
             self.status = message
+        }
+        mediaTranscriptionService.onProgress = { [weak self] progress in
+            guard let self, self.isTranscribingMedia else { return }
+            self.mediaProgress = self.overallMediaProgress(progress)
+            self.mediaStatus = progress.message
+            self.status = progress.message
         }
         textProcessingService.onWorkerEvent = { [weak self] message in
             guard let self, !self.isRecording, !self.isTranscribing else { return }
@@ -179,9 +218,11 @@ final class AppState: ObservableObject {
         let engineReady = selectedEngine.runtimeComponent.map {
             installedComponents.contains($0)
         } ?? true
-        let editorReady = textProcessingMode.runtimeComponent.map {
-            installedComponents.contains($0)
-        } ?? true
+        let editorReady = inputMode == .mediaFile
+            ? true
+            : textProcessingMode.runtimeComponent.map {
+                installedComponents.contains($0)
+            } ?? true
         return engineReady && editorReady
     }
 
@@ -190,7 +231,8 @@ final class AppState: ObservableObject {
         if let component = selectedEngine.runtimeComponent {
             required.insert(component)
         }
-        if let component = textProcessingMode.runtimeComponent {
+        if inputMode == .dictation,
+           let component = textProcessingMode.runtimeComponent {
             required.insert(component)
         }
         return required.subtracting(installedComponents)
@@ -206,7 +248,15 @@ final class AppState: ObservableObject {
     }
 
     var isBusy: Bool {
-        isTranscribing || isProcessingText
+        isChoosingMediaFile || isTranscribing || isTranscribingMedia || isProcessingText
+    }
+
+    var canRateLastResult: Bool {
+        lastResult != nil && lastMediaResult == nil
+    }
+
+    var hasMediaResult: Bool {
+        lastMediaResult != nil
     }
 
     func toggleRecording() {
@@ -214,6 +264,17 @@ final class AppState: ObservableObject {
     }
 
     private func toggleRecording(source: String) {
+        guard !isChoosingMediaFile else {
+            status = "Сначала закройте окно выбора файла."
+            return
+        }
+        guard !isTranscribingMedia else {
+            status = "Сначала остановите расшифровку файла."
+            return
+        }
+        if source == "hotkey", inputMode == .mediaFile {
+            inputMode = .dictation
+        }
         if isRecording {
             stopRecording()
         } else {
@@ -231,6 +292,10 @@ final class AppState: ObservableObject {
 
         recordingSource = source
         targetPID = appTracker.lastExternalPID
+        lastMediaResult = nil
+        lastMediaOutputDirectory = nil
+        lastText = ""
+        lastMetrics = ""
 
         switch AVCaptureDevice.authorizationStatus(for: .audio) {
         case .authorized:
@@ -240,8 +305,10 @@ final class AppState: ObservableObject {
             Permissions.requestMicrophone { [weak self] granted in
                 guard let self else { return }
                 self.refreshPermissions()
-                if granted {
+                if granted, self.inputMode == .dictation, !self.isBusy {
                     self.beginRecording()
+                } else if granted {
+                    self.status = "Запись не начата: приложение уже занято."
                 } else {
                     self.status = VoiceSwitchError.microphoneDenied.localizedDescription
                 }
@@ -319,6 +386,56 @@ final class AppState: ObservableObject {
                 self.hudController.showFailure("Ошибка распознавания")
             }
         }
+    }
+
+    func chooseMediaFile() {
+        guard !isRecording, !isBusy else { return }
+        guard selectedEngine != .apple else {
+            status = "Для файлов выберите GigaAM, Whisper или Qwen."
+            return
+        }
+        guard selectedEngineReady else {
+            status = "Сначала установите выбранную модель."
+            return
+        }
+
+        let panel = NSOpenPanel()
+        panel.title = "Расшифровать аудио или видео"
+        panel.message = "VoiceSwitch обработает только аудиодорожку и сохранит результат локально."
+        panel.prompt = "Расшифровать"
+        panel.canChooseDirectories = false
+        panel.canChooseFiles = true
+        panel.allowsMultipleSelection = false
+        panel.allowedContentTypes = [.audio, .movie]
+
+        NSApplication.shared.activate(ignoringOtherApps: true)
+        isChoosingMediaFile = true
+        let response = panel.runModal()
+        isChoosingMediaFile = false
+        guard response == .OK, let sourceURL = panel.url else { return }
+        guard inputMode == .mediaFile, !isRecording, !isBusy else {
+            status = "Не удалось начать задачу: приложение уже занято."
+            return
+        }
+        startMediaTranscription(sourceURL: sourceURL)
+    }
+
+    func cancelMediaTranscription() {
+        guard isTranscribingMedia else { return }
+        mediaStatus = "Останавливаю задачу…"
+        status = mediaStatus
+        mediaTranscriptionService.cancel()
+    }
+
+    func copyLastMediaText() {
+        guard let result = lastMediaResult else { return }
+        TextInjector.copy(result.text)
+        status = "Расшифровка скопирована."
+    }
+
+    func openLastMediaOutputFolder() {
+        guard let directory = lastMediaOutputDirectory else { return }
+        NSWorkspace.shared.open(directory)
     }
 
     func prewarmSelectedEngine() {
@@ -482,6 +599,7 @@ final class AppState: ObservableObject {
     func quit() {
         hudController.hideImmediately()
         runtimeInstaller.cancel()
+        mediaTranscriptionService.shutdown()
         asrService.shutdown()
         textProcessingService.shutdown()
         NSApplication.shared.terminate(nil)
@@ -496,6 +614,120 @@ final class AppState: ObservableObject {
         window.makeKeyAndOrderFront(nil)
         NSApplication.shared.activate(ignoringOtherApps: true)
         uiTestWindow = window
+    }
+
+    private func startMediaTranscription(sourceURL: URL) {
+        let didAccess = sourceURL.startAccessingSecurityScopedResource()
+        mediaSecurityScopedURL = didAccess ? sourceURL : nil
+        do {
+            let engine = selectedEngine
+            let prompt = engine.supportsContext ? recognitionContext : ""
+            let outputDirectory = try mediaOutputDirectory(
+                for: sourceURL,
+                engine: engine,
+                prompt: prompt
+            )
+
+            // Файловая задача загружает собственную копию модели. Освобождаем
+            // worker диктовки, чтобы не удваивать расход памяти на Apple Silicon.
+            asrService.shutdown()
+
+            isTranscribingMedia = true
+            mediaProgress = nil
+            mediaSourceName = sourceURL.lastPathComponent
+            mediaStatus = "Подготавливаю \(sourceURL.lastPathComponent)…"
+            status = mediaStatus
+            lastResult = nil
+            lastMediaResult = nil
+            lastRating = nil
+            lastMediaOutputDirectory = outputDirectory
+            lastText = ""
+            lastMetrics = ""
+
+            mediaTranscriptionService.transcribe(
+                sourceURL: sourceURL,
+                outputDirectory: outputDirectory,
+                engine: engine,
+                prompt: prompt
+            ) { [weak self] result in
+                guard let self else { return }
+                self.releaseMediaSecurityScope()
+                self.isTranscribingMedia = false
+
+                switch result {
+                case .success(let transcription):
+                    self.lastMediaResult = transcription
+                    self.lastMediaOutputDirectory = transcription.outputDirectory
+                    self.lastText = transcription.text
+                    self.lastOutputMode = .verbatim
+                    self.lastMetrics = self.mediaMetrics(for: transcription)
+                    self.mediaProgress = 1
+                    let hasSpeech = !transcription.text
+                        .trimmingCharacters(in: .whitespacesAndNewlines)
+                        .isEmpty
+                    if hasSpeech {
+                        self.mediaStatus = "Готово — сохранены TXT, SRT, VTT и JSON."
+                    } else {
+                        self.mediaStatus = "Обработка завершена, но речь не обнаружена. Файлы результата сохранены."
+                    }
+                    self.status = self.mediaStatus
+                    self.hudController.showSuccess("Файл расшифрован")
+                case .failure(let error):
+                    self.mediaProgress = nil
+                    self.mediaStatus = error.localizedDescription
+                    self.status = error.localizedDescription
+                    if let voiceSwitchError = error as? VoiceSwitchError,
+                       case .mediaCancelled = voiceSwitchError {
+                        self.hudController.showFailure("Задача остановлена")
+                    } else {
+                        self.hudController.showFailure("Ошибка обработки файла")
+                    }
+                }
+            }
+        } catch {
+            releaseMediaSecurityScope()
+            status = error.localizedDescription
+            mediaStatus = error.localizedDescription
+            hudController.showFailure("Не удалось начать обработку")
+        }
+    }
+
+    private func mediaOutputDirectory(
+        for sourceURL: URL,
+        engine: ASREngine,
+        prompt: String
+    ) throws -> URL {
+        let attributes = try FileManager.default.attributesOfItem(
+            atPath: sourceURL.path
+        )
+        let size = (attributes[.size] as? NSNumber)?.uint64Value ?? 0
+        let modified = (attributes[.modificationDate] as? Date)?.timeIntervalSince1970 ?? 0
+        let promptDigest = SHA256.hash(data: Data(prompt.utf8))
+            .map { String(format: "%02x", $0) }
+            .joined()
+        let identity = "\(sourceURL.standardizedFileURL.path)|\(size)|\(modified)|\(engine.rawValue)|\(promptDigest)"
+        let digest = SHA256.hash(data: Data(identity.utf8))
+            .prefix(6)
+            .map { String(format: "%02x", $0) }
+            .joined()
+        let baseName = sourceURL.deletingPathExtension().lastPathComponent
+        let safeName = baseName
+            .components(separatedBy: CharacterSet.alphanumerics.inverted)
+            .filter { !$0.isEmpty }
+            .joined(separator: "-")
+        let folderName = "\(safeName.isEmpty ? "media" : safeName)-\(engine.rawValue)-\(digest)"
+        let directory = RuntimePaths.transcriptsRoot
+            .appendingPathComponent(folderName, isDirectory: true)
+        try FileManager.default.createDirectory(
+            at: directory,
+            withIntermediateDirectories: true
+        )
+        return directory
+    }
+
+    private func releaseMediaSecurityScope() {
+        mediaSecurityScopedURL?.stopAccessingSecurityScopedResource()
+        mediaSecurityScopedURL = nil
     }
 
     private func process(
@@ -602,6 +834,35 @@ final class AppState: ObservableObject {
         )
     }
 
+    private func mediaMetrics(for transcription: MediaTranscriptionResult) -> String {
+        let factor = transcription.mediaDuration > 0
+            ? transcription.latency / transcription.mediaDuration
+            : 0
+        return String(
+            format: "%.1f мин медиа → %.1f мин ASR · %d блоков · RTF %.2f",
+            transcription.mediaDuration / 60,
+            transcription.latency / 60,
+            transcription.segmentCount,
+            factor
+        )
+    }
+
+    private func overallMediaProgress(_ progress: MediaProgress) -> Double? {
+        guard let fraction = progress.fraction else { return nil }
+        switch progress.phase {
+        case .preparing:
+            return 0
+        case .normalizing:
+            return fraction * 0.1
+        case .loading:
+            return 0.1 + fraction * 0.1
+        case .transcribing:
+            return 0.2 + fraction * 0.75
+        case .exporting:
+            return 0.95 + fraction * 0.05
+        }
+    }
+
     private func beginRecording() {
         do {
             _ = try audioRecorder.start()
@@ -615,6 +876,7 @@ final class AppState: ObservableObject {
     }
 
     deinit {
+        mediaTranscriptionService.shutdown()
         hotKey.stop()
     }
 }

@@ -120,6 +120,22 @@ enum OnboardingStep {
     case ready
 }
 
+enum InputMode: String, CaseIterable, Identifiable {
+    case dictation
+    case mediaFile
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .dictation:
+            return "Диктовка"
+        case .mediaFile:
+            return "Файл"
+        }
+    }
+}
+
 enum ASREngine: String, CaseIterable, Identifiable, Codable {
     case gigaam
     case whisper
@@ -272,12 +288,58 @@ struct TextProcessingResult {
     let latency: Double
 }
 
+enum MediaJobPhase: String {
+    case preparing
+    case normalizing
+    case loading
+    case transcribing
+    case exporting
+
+    var title: String {
+        switch self {
+        case .preparing:
+            return "Подготавливаю файл…"
+        case .normalizing:
+            return "Извлекаю аудиодорожку…"
+        case .loading:
+            return "Загружаю модель…"
+        case .transcribing:
+            return "Распознаю речь…"
+        case .exporting:
+            return "Сохраняю результаты…"
+        }
+    }
+}
+
+struct MediaProgress {
+    let phase: MediaJobPhase
+    let message: String
+    let completedChunks: Int
+    let totalChunks: Int
+    let fraction: Double?
+}
+
+struct MediaTranscriptionResult {
+    let requestID: String
+    let engine: ASREngine
+    let sourceName: String
+    let text: String
+    let latency: Double
+    let mediaDuration: Double
+    let segmentCount: Int
+    let outputDirectory: URL
+    let files: [String: URL]
+}
+
 enum VoiceSwitchError: LocalizedError {
     case runtimeMissing(String)
     case workerFailed(String)
     case invalidResponse
     case microphoneDenied
     case recordingFailed(String)
+    case mediaCancelled
+    case noAudio
+    case unsupportedMedia(String)
 
     var errorDescription: String? {
         switch self {
@@ -291,6 +353,12 @@ enum VoiceSwitchError: LocalizedError {
             return "Нет доступа к микрофону."
         case .recordingFailed(let message):
             return "Не удалось записать звук: \(message)"
+        case .mediaCancelled:
+            return "Расшифровка файла остановлена. Готовые блоки будут использованы при повторном запуске."
+        case .noAudio:
+            return "В выбранном файле не найдена аудиодорожка."
+        case .unsupportedMedia(let message):
+            return "Не удалось обработать файл: \(message)"
         }
     }
 }

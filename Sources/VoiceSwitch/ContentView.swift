@@ -21,18 +21,27 @@ struct ContentView: View {
     }
 
     private var mainContent: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            header
-            if state.shouldShowRuntimeSetup {
-                runtimeSetupSection
+        ScrollView {
+            VStack(alignment: .leading, spacing: 14) {
+                header
+                if state.shouldShowRuntimeSetup {
+                    runtimeSetupSection
+                }
+                inputModePicker
+                enginePicker
+                if state.inputMode == .dictation {
+                    textModePicker
+                    recordSection
+                } else {
+                    MediaImportView(state: state)
+                }
+                resultSection
+                settingsSection
+                footer
             }
-            enginePicker
-            textModePicker
-            recordSection
-            resultSection
-            settingsSection
-            footer
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
+        .frame(maxHeight: 720)
     }
 
     @ViewBuilder
@@ -358,7 +367,7 @@ struct ContentView: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text("VoiceSwitch")
                     .font(.headline)
-                Text("Локальная диктовка и редактура текста")
+                Text("Локальная диктовка и расшифровка файлов")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -373,7 +382,7 @@ struct ContentView: View {
                 .foregroundStyle(.secondary)
 
             Picker("Модель", selection: $state.selectedEngine) {
-                ForEach(ASREngine.allCases) { engine in
+                ForEach(availableEngines) { engine in
                     Text(engine.shortTitle).tag(engine)
                 }
             }
@@ -384,6 +393,16 @@ struct ContentView: View {
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
+    }
+
+    private var inputModePicker: some View {
+        Picker("Источник", selection: $state.inputMode) {
+            ForEach(InputMode.allCases) { mode in
+                Text(mode.title).tag(mode)
+            }
+        }
+        .pickerStyle(.segmented)
+        .disabled(state.isRecording || state.isBusy || state.isInstallingRuntime)
     }
 
     private var textModePicker: some View {
@@ -450,7 +469,7 @@ struct ContentView: View {
                     Text("Последний текст")
                         .font(.caption)
                         .foregroundStyle(.secondary)
-                    Text(state.lastOutputMode.title)
+                    Text(state.hasMediaResult ? "Файл" : state.lastOutputMode.title)
                         .font(.caption2.weight(.medium))
                         .padding(.horizontal, 6)
                         .padding(.vertical, 2)
@@ -474,17 +493,26 @@ struct ContentView: View {
                 .clipShape(RoundedRectangle(cornerRadius: 8))
 
                 HStack(spacing: 8) {
-                    Text("Оценка:")
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                    Button("Хорошо") {
-                        state.rateLastResult("accurate")
-                    }
-                    Button("Нужно исправить") {
-                        state.rateLastResult("errors")
+                    if state.hasMediaResult {
+                        Button("Скопировать текст") {
+                            state.copyLastMediaText()
+                        }
+                        Button("Показать файлы") {
+                            state.openLastMediaOutputFolder()
+                        }
+                    } else if state.canRateLastResult {
+                        Text("Оценка:")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                        Button("Хорошо") {
+                            state.rateLastResult("accurate")
+                        }
+                        Button("Нужно исправить") {
+                            state.rateLastResult("errors")
+                        }
                     }
                     Spacer()
-                    if state.lastRating != nil {
+                    if state.lastRating != nil && state.canRateLastResult {
                         Label("Сохранено", systemImage: "checkmark")
                             .font(.caption2)
                             .foregroundStyle(.green)
@@ -499,8 +527,10 @@ struct ContentView: View {
         VStack(alignment: .leading, spacing: 9) {
             Divider()
 
-            Toggle("Автоматически вставлять текст в активное приложение", isOn: $state.autoPaste)
-                .font(.caption)
+            if state.inputMode == .dictation {
+                Toggle("Автоматически вставлять текст в активное приложение", isOn: $state.autoPaste)
+                    .font(.caption)
+            }
 
             if state.selectedEngine.supportsContext {
                 TextField(
@@ -511,23 +541,27 @@ struct ContentView: View {
                 .font(.caption)
             }
 
-            VStack(alignment: .leading, spacing: 3) {
-                Label(state.microphoneStatus, systemImage: "mic")
-                Label(
-                    state.accessibilityStatus,
-                    systemImage: state.accessibilityAuthorized ? "checkmark.shield" : "exclamationmark.shield"
-                )
+            if state.inputMode == .dictation {
+                VStack(alignment: .leading, spacing: 3) {
+                    Label(state.microphoneStatus, systemImage: "mic")
+                    Label(
+                        state.accessibilityStatus,
+                        systemImage: state.accessibilityAuthorized ? "checkmark.shield" : "exclamationmark.shield"
+                    )
+                }
+                .font(.caption2)
+                .foregroundStyle(.secondary)
             }
-            .font(.caption2)
-            .foregroundStyle(.secondary)
 
             HStack {
                 Button("Подготовить модель") {
                     state.prewarmSelectedEngine()
                 }
                 .disabled(!state.selectedEngineReady || state.isBusy || state.isInstallingRuntime)
-                Button("Разрешить доступ") {
-                    state.requestAccessibility()
+                if state.inputMode == .dictation {
+                    Button("Разрешить доступ") {
+                        state.requestAccessibility()
+                    }
                 }
                 Spacer()
                 Button("Журнал тестов") {
@@ -540,7 +574,11 @@ struct ContentView: View {
 
     private var footer: some View {
         HStack {
-            Text("fn + ⌥ — начать или остановить запись")
+            Text(
+                state.inputMode == .dictation
+                    ? "fn + ⌥ — начать или остановить запись"
+                    : "Все файлы остаются на этом Mac"
+            )
                 .font(.caption2)
                 .foregroundStyle(.tertiary)
             Spacer()
@@ -557,6 +595,12 @@ struct ContentView: View {
             .filter(state.installedComponents.contains)
             .map(\.title)
         return names.isEmpty ? "системный режим Apple" : names.joined(separator: ", ")
+    }
+
+    private var availableEngines: [ASREngine] {
+        state.inputMode == .mediaFile
+            ? ASREngine.allCases.filter { $0 != .apple }
+            : ASREngine.allCases
     }
 
     private func onboardingFeature(_ icon: String, _ title: String) -> some View {

@@ -19,6 +19,8 @@ COMPONENT_MARKERS_ROOT="${RUNTIME_ROOT}/components"
 UV_VERSION="0.11.32"
 GIGAAM_COMMIT="559d88d6b72541412743929f633a6ae7c9950b85"
 GIGAAM_ARCHIVE="https://github.com/salute-developers/GigaAM/archive/${GIGAAM_COMMIT}.zip"
+TORCH_VERSION="2.13.0"
+TORCHAUDIO_VERSION="2.11.0"
 
 STATUS_MARKER="__VOICESWITCH_SETUP__"
 ERROR_MARKER="__VOICESWITCH_SETUP_ERROR__"
@@ -48,6 +50,8 @@ write_install_marker() {
     print -r -- "selective_install=1"
     print -r -- "uv_version=${UV_VERSION}"
     print -r -- "gigaam_commit=${GIGAAM_COMMIT}"
+    print -r -- "torch_version=${TORCH_VERSION}"
+    print -r -- "torchaudio_version=${TORCHAUDIO_VERSION}"
     local marker
     for marker in "${COMPONENT_MARKERS_ROOT}"/*.ready(N); do
       print -r -- "component=${marker:t:r}"
@@ -245,18 +249,26 @@ ln -sf "${FFMPEG_EXECUTABLE}" "${BIN_ROOT}/ffmpeg" || \
   fail_step "Настраиваю ffmpeg"
 
 if component_requested gigaam; then
+  # Начиная с torchaudio 2.11 пакет больше не объявляет torch своей
+  # зависимостью. Ставим обе проверенные версии явно (GitHub issue #6).
   run_with_retries \
     "Устанавливаю движок GigaAM…" \
     3 \
     "${UV_EXECUTABLE}" pip install \
       --python "${PYTHON}" \
-      torchaudio \
+      "torch==${TORCH_VERSION}" \
+      "torchaudio==${TORCHAUDIO_VERSION}" \
       "${GIGAAM_ARCHIVE}" || fail_step "Устанавливаю движок GigaAM"
 
   status "Проверяю зависимости GigaAM…"
   if ! "${PYTHON}" -c 'import torch, torchaudio, gigaam'; then
     fail \
       "Не удалось загрузить зависимости GigaAM (torch/torchaudio). Нажмите «Продолжить установку», чтобы восстановить окружение. Журнал: ${LOG_FILE}"
+  fi
+
+  if [[ "${VOICESWITCH_SETUP_DEPENDENCIES_ONLY:-0}" == "1" ]]; then
+    status "Чистая проверка зависимостей GigaAM завершена."
+    exit 0
   fi
 
   run_with_retries \

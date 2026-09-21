@@ -17,7 +17,8 @@
 ```zsh
 swift build
 zsh -n scripts/*.sh Resources/install_runtime.sh
-python3 -m py_compile worker/asr_worker.py worker/text_worker.py scripts/collect_github_stats.py
+python3 -m py_compile worker/asr_worker.py worker/media_worker.py worker/text_worker.py scripts/collect_github_stats.py
+python3 -m unittest discover -s tests -v
 ```
 
 Для изменения распознавания желательно приложить обезличенный набор тестовых
