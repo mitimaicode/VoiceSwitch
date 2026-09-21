@@ -19,11 +19,27 @@ jobs:
       - name: Validate release source
         run: |
           zsh -n scripts/*.sh Resources/install_runtime.sh
-          python3 -m py_compile worker/asr_worker.py worker/media_worker.py worker/text_worker.py
+          bash -n server/linux/install.sh scripts/package_server_release.sh
+          python3 -m py_compile \
+            worker/asr_worker.py \
+            worker/media_worker.py \
+            worker/text_worker.py \
+            server/linux/stt/*.py \
+            server/linux/video/*.py \
+            server/linux/healthcheck.py
           python3 -m unittest discover -s tests -v
+          PYTHONPATH=server/linux/video \
+            python3 -m unittest discover -s server/linux/tests -v
+          node --check server/linux/openclaw-plugin/index.js
+          node --test \
+            server/linux/openclaw-plugin/index.test.js \
+            server/linux/openclaw-plugin/source-validation.test.js \
+            server/linux/openclaw-plugin/tool-result.test.js \
+            server/linux/openclaw-plugin/worker-scope.test.js
           bundle_version=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' Resources/Info.plist)
           tag_version="${GITHUB_REF_NAME#v}"
           test "$bundle_version" = "${tag_version%%-*}"
+          test "$(tr -d '[:space:]' < server/linux/VERSION)" = "$tag_version"
 
       - name: Validate clean GigaAM dependency install
         run: |
@@ -37,9 +53,11 @@ jobs:
 
       - name: Build release archive
         run: |
-          chmod +x scripts/*.sh Resources/install_runtime.sh
+          chmod +x scripts/*.sh Resources/install_runtime.sh server/linux/install.sh server/linux/healthcheck.py
           ./scripts/package_release.sh "${GITHUB_REF_NAME#v}"
+          ./scripts/package_server_release.sh "${GITHUB_REF_NAME#v}"
           test -f "dist/VoiceSwitch-${GITHUB_REF_NAME#v}-macos-arm64/VoiceSwitch.app/Contents/Resources/media_worker.py"
+          test -f "dist/VoiceSwitch-Server-${GITHUB_REF_NAME#v}-linux-x86_64.tar.gz"
 
       - name: Publish GitHub release
         env:
@@ -52,7 +70,9 @@ jobs:
             dist/VoiceSwitch-*.dmg.sha256
             dist/VoiceSwitch-*.zip
             dist/VoiceSwitch-*.zip.sha256
-            --title "VoiceSwitch ${GITHUB_REF_NAME}"
+            dist/VoiceSwitch-Server-*.tar.gz
+            dist/VoiceSwitch-Server-*.tar.gz.sha256
+            --title "VoiceSwitch ${GITHUB_REF_NAME} — Linux Server Edition"
           )
           if [[ -f "$notes_file" ]]; then
             args+=(--notes-file "$notes_file")
