@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "collected_at": "2026-10-01T10:05:45.458620+00:00",
+  "collected_at": "2026-10-02T09:43:33.758945+00:00",
   "repository": "mitimaicode/VoiceSwitch",
   "community": {
     "stars": 5,
@@ -9,7 +9,7 @@
     "open_issues_and_pull_requests": 1
   },
   "releases": {
-    "total_asset_downloads": 53,
+    "total_asset_downloads": 54,
     "items": [
       {
         "tag": "v0.5.0-beta",
@@ -19,7 +19,7 @@
         "assets": [
           {
             "name": "VoiceSwitch-0.5.0-beta-macos-arm64.dmg",
-            "downloads": 7,
+            "downloads": 8,
             "size": 754362,
             "updated_at": "2026-09-21T17:23:01Z"
           },
